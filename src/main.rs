@@ -2,16 +2,16 @@ mod twitch;
 
 use std::fs;
 use std::path::PathBuf;
-use iced::widget::{button, column, text, row, container, Text, Row, text_input, Column, checkbox, Checkbox, rule, Container, stack, opaque, mouse_area, center, Button};
+use iced::widget::{button, column, text, row, container, Text, text_input, Column, checkbox, Checkbox, rule, Container, stack, opaque, mouse_area, center, Button, pick_list, PickList, TextInput};
 use iced::{Center, Color, Element, Length, Renderer, Task, Theme};
 use iced::alignment::Vertical;
-use iced::widget::text::State;
 use crate::twitch::*;
 use tracing::info;
 use iced_aw::{number_input, TabBar, TabLabel};
 use serde::{Deserialize, Serialize};
 use directories::ProjectDirs;
-use iced::advanced::svg::Data::Path;
+use rand::prelude::*;
+use rand::rng;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 enum TabId {
@@ -41,6 +41,7 @@ impl TabId {
 }
 
 #[derive(Default, Debug, Serialize, Deserialize)]
+#[serde(default)]
 struct PollState {
     title: String,
     options: Vec<String>,
@@ -48,6 +49,7 @@ struct PollState {
     uses_channel_points: bool,
     channel_point_cost: usize,
     id: String,
+    name: String
 }
 
 #[derive(Default, Debug)]
@@ -65,6 +67,9 @@ struct App {
     tabs: Vec<(String, String)>,
     err: String,
     poll_state: PollState,
+    polls: Vec<String>,
+    selected_poll: Option<String>,
+    poll_loaded: bool,
     config_path: std::path::PathBuf,
 }
 
@@ -101,7 +106,13 @@ enum PollMessage {
     PointCostChange(usize),
     EndPoll,
     PollEnded,
+    ConfigSelected(String),
+    LoadConfig,
+    ConfigLoaded,
     SaveConfig,
+    NewConfig,
+    NameChanged(String),
+    SwitchOptions,
 }
 
 #[derive(Debug, Clone)]
@@ -226,8 +237,54 @@ impl App {
             }
             SaveConfig => {
                 let json = serde_json::to_string(&self.poll_state).unwrap();
-                let path = self.config_path.join("polls").join("test.json");
+                let poll = self.poll_state.name.clone();
+                let path = self.config_path.join("polls").join(format!("{}.json", poll));
                 fs::write(&path, json).unwrap();
+                let polls = Self::load_polls(self.config_path.join("polls"));
+                self.polls = polls;
+                self.selected_poll = Some(poll);
+                self.poll_loaded = true;
+                Task::none()
+            }
+            ConfigSelected(c) => {
+                self.selected_poll = Some(c.clone());
+                Task::none()
+            }
+            LoadConfig => {
+                let selection = &self.selected_poll;
+                if let Some(poll) = selection {
+                    let path = &self.config_path.join("polls").join(format!("{}.json", poll));
+                    let config: Option<PollState> = fs::read_to_string(path)
+                        .ok()
+                        .and_then(|t| {
+                            let result = serde_json::from_str(&t);
+                            result.ok()
+                        });
+                    if let Some(state) = config {
+                        self.poll_state = state;
+                        self.poll_loaded = true;
+                    }
+                }
+                Task::none()
+            }
+            ConfigLoaded => {
+                Task::none()
+            }
+            NewConfig => {
+                self.poll_loaded = false;
+                self.selected_poll = None;
+                Task::none()
+            }
+            NameChanged(name) => {
+                self.poll_state.name = name;
+                Task::none()
+            }
+            SwitchOptions => {
+                if self.poll_state.options.len() == 2 {
+                    self.poll_state.options.swap(0, 1);
+                } else {
+                    self.poll_state.options.shuffle(&mut rng())
+                }
                 Task::none()
             }
         }
@@ -343,7 +400,7 @@ impl App {
         }
     }
 
-    fn view(&'_ self) -> Element<Message> {
+    fn view(&self) -> Element<Message> {
         let tab_bar = TabBar::new(Message::TabSelected)
             .push(TabId::Prediction.idx(), TabLabel::Text("Prediction".into()))
             .push(TabId::Poll.idx(), TabLabel::Text("Poll".into()))
@@ -404,8 +461,19 @@ impl App {
         match &self.active_tab {
             TabId::Prediction => Container::new(row![Text::new("Dashboard content")]),
             TabId::Poll => {
+                let dropdown: PickList<'_, String, Vec<String>, String, Message> = pick_list(self.polls.clone(), self.selected_poll.clone(), |t| Message::Poll(PollMessage::ConfigSelected(t)));
+                let load_btn: Button<_> = button("Load")
+                    .on_press(Message::Poll(PollMessage::LoadConfig));
+                let mut name_input: TextInput<_> = text_input("Config Name", &self.poll_state.name);
+                if !self.poll_loaded {
+                   name_input = name_input.on_input(|n| Message::Poll(PollMessage::NameChanged(n)));
+                }
+                let new_btn: Button<_> = button("New")
+                    .on_press(Message::Poll(PollMessage::NewConfig));
                 let save_btn: Button<_> = button("Save")
                     .on_press(Message::Poll(PollMessage::SaveConfig));
+
+                let save_row = row![dropdown, name_input, new_btn, load_btn, save_btn].spacing(SPACING);
 
                 let title_input = text_input("Poll title", &self.poll_state.title)
                     .on_input(|r| Message::Poll(PollMessage::TitleChanged(r)));
@@ -421,6 +489,14 @@ impl App {
                 }
 
                 let add_btn = button("+").on_press(Message::Poll(PollMessage::AddOption));
+                let switch_btn = button("Switch Options").on_press(Message::Poll(PollMessage::SwitchOptions));
+                let shuffle_btn = button("Shuffle Options").on_press(Message::Poll(PollMessage::SwitchOptions));
+                let mut option_btn_row = row![add_btn].spacing(SPACING);
+                if self.poll_state.options.len() == 2 {
+                    option_btn_row = option_btn_row.push(switch_btn)
+                } else {
+                    option_btn_row = option_btn_row.push(shuffle_btn)
+                }
 
                 let duration_text = Text::new("Duration in s: ");
                 let duration_inp = number_input(&self.poll_state.duration, 0..=600, |d| Message::Poll(PollMessage::DurationChange(d)));
@@ -442,7 +518,7 @@ impl App {
                 if !&self.poll_state.id.is_empty() {
                     btns = btns.push(end_btn)
                 }
-                Container::new(row![column![save_btn, title_input, opt_col, add_btn, rule::horizontal(2), duration_row, rule::horizontal(2), channel_row, rule::horizontal(2), btns].spacing(SPACING)])
+                Container::new(row![column![save_row, title_input, opt_col, option_btn_row, rule::horizontal(2), duration_row, rule::horizontal(2), channel_row, rule::horizontal(2), btns].spacing(SPACING)])
                     .max_width(600)
             }
             TabId::Misc => Container::new(row![Text::new("Profile content")]),
@@ -469,6 +545,8 @@ impl App {
         fs::create_dir_all(config_path.join("polls")).unwrap();
         fs::create_dir_all(config_path.join("predictions")).unwrap();
 
+        let polls = Self::load_polls(proj.config_dir().join("polls"));
+
         let poll_state = PollState {
             options: vec![String::new(), String::new()],
             duration: 300,
@@ -480,9 +558,10 @@ impl App {
             let app = Self {
                 access_token: Some(access.clone()),
                 refresh_token: Some(refresh.clone()),
-                poll_state,
                 auth_status: "Checking saved token...".to_string(),
+                poll_state,
                 config_path,
+                polls,
                 ..Default::default()
             };
             info!("App state: {:?}", app.access_token);
@@ -498,8 +577,15 @@ impl App {
             auth_status: "Not logged in".to_string(),
             poll_state,
             config_path,
+            polls,
             ..Default::default()
         }, Task::none())
+    }
+
+    fn load_polls(path: PathBuf) -> Vec<String> {
+        fs::read_dir(path).unwrap().map(|r| {
+            r.unwrap().path().file_stem().unwrap().to_str().unwrap().to_string()
+        }).collect::<Vec<String>>()
     }
 }
 

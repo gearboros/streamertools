@@ -4,7 +4,6 @@ use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
 use std::path::PathBuf;
 use std::fs;
-use std::env;
 
 #[derive(Serialize, Deserialize)]
 struct StoredTokens {
