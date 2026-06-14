@@ -1,0 +1,128 @@
+use iced::Task;
+use tracing::info;
+use crate::{App, DeviceCodeInfo, Message};
+use crate::twitch_auth::{poll_for_tokens, refresh_access_token, request_device_code, save_tokens, validate_token};
+
+
+#[derive(Debug, Clone)]
+pub enum AuthMessage {
+    StartAuth,
+    DeviceCodeReceived(Result<DeviceCodeInfo, String>),
+    PollForTokens { device_code: String, interval: u64, expires_in: u64 },
+    AuthCompleted(Result<(String, String), String>),
+    ValidateToken,
+    TokenValidated(Option<String>),
+    RefreshToken,
+}
+impl App {
+    pub fn handle_auth(&mut self, auth_message: AuthMessage) -> Task<Message> {
+        use crate::auth::AuthMessage::*;
+        match auth_message {
+            StartAuth => {
+                self.auth_status = "Requesting device code...".to_string();
+                self.auth_in_progress = true;
+                self.device_code_info = None;
+
+                Task::perform(
+                    async {
+                        match request_device_code().await {
+                            Ok(resp) => {
+                                // Open browser to verification URL
+                                let _ = open::that(&resp.verification_uri);
+                                Ok(DeviceCodeInfo {
+                                    verification_uri: resp.verification_uri,
+                                    user_code: resp.user_code,
+                                    device_code: resp.device_code,
+                                    interval: resp.interval,
+                                    expires_in: resp.expires_in,
+                                })
+                            }
+                            Err(e) => Err(e),
+                        }
+                    },
+                    |result| Message::Auth(DeviceCodeReceived(result)),
+                )
+            }
+            DeviceCodeReceived(result) => {
+                match result {
+                    Ok(info) => {
+                        self.auth_status = format!(
+                            "Go to {} and enter code: {}",
+                            info.verification_uri, info.user_code
+                        );
+                        let device_code = info.device_code.clone();
+                        let interval = info.interval;
+                        let expires_in = info.expires_in;
+                        self.device_code_info = Some(info);
+
+                        // Start polling for tokens
+                        Task::done(Message::Auth(PollForTokens { device_code, interval, expires_in }))
+                    }
+                    Err(e) => {
+                        self.auth_status = format!("Error: {}", e);
+                        self.auth_in_progress = false;
+                        Task::none()
+                    }
+                }
+            }
+            PollForTokens { device_code, interval, expires_in } => {
+                Task::perform(
+                    async move {
+                        poll_for_tokens(&device_code, interval, expires_in).await
+                    },
+                    |result| Message::Auth(AuthCompleted(result)),
+                )
+            }
+            AuthCompleted(res) => {
+                self.auth_in_progress = false;
+                self.device_code_info = None;
+                match res {
+                    Ok((access_token, refresh_token)) => {
+                        let _ = save_tokens(&access_token, &refresh_token, &self.config_path);
+                        self.access_token = Some(access_token);
+                        self.refresh_token = Some(refresh_token);
+                        self.auth_status = "Authenticated".to_string();
+                    }
+                    Err(e) => {
+                        self.auth_status = format!("Error: {}", e);
+                    }
+                }
+                Task::none()
+            }
+            ValidateToken => {
+                if let Some(token) = &self.access_token {
+                    let t = token.clone();
+                    Task::perform(async move { validate_token(&t).await }, |result| Message::Auth(TokenValidated(result)))
+                } else {
+                    Task::none()
+                }
+            }
+            TokenValidated(valid) => {
+                info!("Token validation result: {:?}", valid);
+                if valid.is_some() {
+                    self.auth_status = "Authenticated".to_string();
+                    self.broadcaster_id = valid;
+                    Task::none()
+                } else {
+                    self.auth_status = "Token Expired, refreshing...".to_string();
+                    if self.refresh_token.is_some() {
+                        info!("Refreshing token...");
+                        Task::done(Message::Auth(RefreshToken))
+                    } else {
+                        info!("No refresh token, starting auth...");
+                        Task::done(Message::Auth(StartAuth))
+                    }
+                }
+            }
+            RefreshToken => {
+                if let Some(refresh) = &self.refresh_token {
+                    let t = refresh.clone();
+                    Task::perform(async move { refresh_access_token(&t).await }, |result| Message::Auth(AuthCompleted(result)))
+                } else {
+                    Task::none()
+                }
+            }
+        }
+    }
+    
+}
