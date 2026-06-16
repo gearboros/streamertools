@@ -1,3 +1,5 @@
+use iced::wgpu::PollStatus;
+use reqwest::{RequestBuilder, Response};
 use serde::{Deserialize, Serialize};
 use crate::CLIENT_ID;
 
@@ -71,14 +73,9 @@ pub async fn create_poll(
 
 pub async fn end_poll(broadcaster_id: &str, poll_id: &str, access_token: &str) -> Result<(), String> {
     let uri = format!("https://api.twitch.tv/helix/polls?broadcaster_id={}&id={}&status=TERMINATED", broadcaster_id, poll_id);
-    let resp = reqwest::Client::new()
-        .patch(uri)
-        .header("Authorization", format!("Bearer {}", access_token))
-        .header("Client-Id", CLIENT_ID)
-        .header("Content-Type", "application/json")
-        .send()
-        .await
-        .map_err(|e| format!("Request error: {}", e))?;
+    let builder = reqwest::Client::new()
+        .patch(uri);
+    let resp = add_headers_and_send(access_token, builder).await?;
 
     if !resp.status().is_success() {
         let err_text = resp.text().await.unwrap_or_default();
@@ -136,7 +133,6 @@ pub async fn create_prediction(
     access_token: &str,
     request: CreatePredictionRequest,
 ) -> Result<CreatePredictionResponseData, String> {
-    dbg!(&request);
     let resp = reqwest::Client::new()
         .post("https://api.twitch.tv/helix/predictions")
         .header("Authorization", format!("Bearer {}", access_token))
@@ -187,14 +183,9 @@ async fn set_prediction_state(request: EndPredictionRequest, access_token: &str,
                       request.prediction_id,
                         status.as_str(),
                       request.outcome_id);
-    let resp = reqwest::Client::new()
-        .patch(uri)
-        .header("Authorization", format!("Bearer {}", access_token))
-        .header("Client-Id", CLIENT_ID)
-        .header("Content-Type", "application/json")
-        .send()
-        .await
-        .map_err(|e| format!("Request error: {}", e))?;
+    let builder = reqwest::Client::new()
+        .patch(uri);
+    let resp = add_headers_and_send(access_token, builder).await?;
 
     if !resp.status().is_success() {
         let err_text = resp.text().await.unwrap_or_default();
@@ -206,14 +197,9 @@ async fn set_prediction_state(request: EndPredictionRequest, access_token: &str,
 
 pub async fn check_prediction(broadcaster_id: &str, prediction_id: &str, access_token: &String) -> Result<CreatePredictionResponseData, String> {
     let uri = format!("https://api.twitch.tv/helix/predictions?broadcaster_id={}&id={}", broadcaster_id, prediction_id);
-    let resp = reqwest::Client::new()
-        .get(uri)
-        .header("Authorization", format!("Bearer {}", access_token))
-        .header("Client-Id", CLIENT_ID)
-        .header("Content-Type", "application/json")
-        .send()
-        .await
-        .map_err(|e| format!("Request error: {}", e))?;
+    let builder = reqwest::Client::new()
+        .get(uri);
+    let resp = add_headers_and_send(access_token, builder).await?;
 
     if !resp.status().is_success() {
         let err_text = resp.text().await.unwrap_or_default();
@@ -222,4 +208,68 @@ pub async fn check_prediction(broadcaster_id: &str, prediction_id: &str, access_
 
     let parsed: CreatePredictionResponse = resp.json::<CreatePredictionResponse>().await.map_err(|e| e.to_string())?;
     Ok(parsed.data.first().unwrap().clone())
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct PollChoiceState {
+    pub id: String,
+    pub title: String,
+    pub votes: i32,
+    pub channel_point_votes: i32,
+}
+
+impl PollChoiceState {
+    pub fn popular_votes(&self) -> i32 {
+        self.votes - self.channel_point_votes
+    }
+}
+
+#[derive(Deserialize, Debug, Clone, Eq, PartialEq)]
+#[serde(rename_all = "UPPERCASE")]
+pub enum PollPhase {
+    Active,
+    Terminated,
+    Archived,
+    Completed,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct PollStateData {
+    pub id: String,
+    pub broadcaster_id: String,
+    pub winning_outcome_id: Option<String>,
+    pub choices: Vec<PollChoiceState>,
+    pub status: PollPhase,
+    pub started_at: Option<String>,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct PollStateResponse {
+    data: Vec<PollStateData>,
+}
+
+pub async fn check_poll(broadcaster_id: &str, poll_id: &str, access_token: &str) -> Result<PollStateData, String> {
+    let uri = format!("https://api.twitch.tv/helix/polls?broadcaster_id={}&id={}", broadcaster_id, poll_id);
+    let builder = reqwest::Client::new()
+        .get(uri);
+    let resp = add_headers_and_send(access_token, builder).await?;
+
+    if !resp.status().is_success() {
+        let err_text = resp.text().await.unwrap_or_default();
+        return Err(format!("Checking poll failed: {}", err_text));
+    }
+
+    let parsed: PollStateResponse = resp.json::<PollStateResponse>().await.map_err(|e| e.to_string())?;
+    Ok(parsed.data.first().unwrap().clone())
+}
+
+async fn add_headers_and_send(access_token: &str, builder: RequestBuilder) -> Result<Response, String> {
+    let resp = builder
+        .header("Authorization", format!("Bearer {}", access_token))
+        .header("Client-Id", CLIENT_ID)
+        .header("Content-Type", "application/json")
+        .send()
+        .await
+        .map_err(|e| format!("Request error: {}", e))?;
+    Ok(resp)
 }

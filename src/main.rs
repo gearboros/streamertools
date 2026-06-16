@@ -104,6 +104,8 @@ enum Message {
     ClearError,
     PredictionTick,
     PredictionPolled(Result<CreatePredictionResponseData, String>),
+    PollTick,
+    PollPolled(Result<PollStateData, String>),
 }
 
 const SPACING: u32 = 10;
@@ -155,6 +157,34 @@ impl App {
                             self.phase = AppPhase::NoPolling;
                         }
                         self.prediction_state.current_state = Some(r);
+                    }
+                    Err(err) => {
+                        eprintln!("{:?}", err);
+                        self.phase = AppPhase::NoPolling;
+                    }
+                }
+                Task::none()
+            }
+            Message::PollTick => {
+                if self.phase == AppPhase::PollPolling {
+                    let broadcaster_id = self.broadcaster_id.clone().unwrap();
+                    let poll_id = self.poll_state.id.clone().unwrap();
+                    let token = self.access_token.clone().unwrap();
+                    Task::perform(async move {
+                        check_poll(&broadcaster_id, &poll_id, &token).await },
+                                  |r| Message::PollPolled(r))
+                } else {
+                    Task::none()
+                }
+            }
+            Message::PollPolled(resp) => {
+                match resp {
+                    Ok(r) => {
+                        self.poll_state.phase = Some(r.status.clone());
+                        if r.status == PollPhase::Archived || r.status == PollPhase::Completed {
+                            self.phase = AppPhase::NoPolling;
+                        }
+                        self.poll_state.current_state = Some(r);
                     }
                     Err(err) => {
                         eprintln!("{:?}", err);
@@ -235,7 +265,7 @@ impl App {
 fn subscription(app: &App) -> Subscription<Message> {
     match app.phase {
         AppPhase::PredictionPolling => time::every(Duration::from_secs(1)).map(|_| Message::PredictionTick),
-        AppPhase::PollPolling => Subscription::none(),
+        AppPhase::PollPolling => time::every(Duration::from_secs(1)).map(|_| Message::PollTick),
         AppPhase::NoPolling => Subscription::none(),
     }
 }
@@ -260,11 +290,12 @@ impl App {
         fs::create_dir_all(config_path.join("polls")).unwrap();
         fs::create_dir_all(config_path.join("predictions")).unwrap();
 
-        let polls = Self::load_polls(proj.config_dir().join("polls"));
-        let preds = Self::load_predictions(proj.config_dir().join("predictions"));
+        let polls = Self::load_files(proj.config_dir().join("polls"));
+        let preds = Self::load_files(proj.config_dir().join("predictions"));
 
         let poll_state = PollState {
             options: vec![String::new(), String::new()],
+            id: None,
             duration: 300,
             channel_point_cost: 5000,
             ..Default::default()
@@ -308,13 +339,7 @@ impl App {
         }, Task::none())
     }
 
-    fn load_polls(path: PathBuf) -> Vec<String> {
-        fs::read_dir(path).unwrap().map(|r| {
-            r.unwrap().path().file_stem().unwrap().to_str().unwrap().to_string()
-        }).collect::<Vec<String>>()
-    }
-
-    fn load_predictions(path: PathBuf) -> Vec<String> {
+    fn load_files(path: PathBuf) -> Vec<String> {
         fs::read_dir(path).unwrap().map(|r| {
             r.unwrap().path().file_stem().unwrap().to_str().unwrap().to_string()
         }).collect::<Vec<String>>()

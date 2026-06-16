@@ -50,7 +50,7 @@ pub enum PredictionMessage {
     CancelPrediction,
 }
 
-pub fn get_state_text(state: &PredictionState) -> String {
+fn get_state_text(state: &PredictionState) -> String {
     if state.phase.is_none() {
         String::from("No Prediction active.")
     } else if state.phase == Some(PredictionStatus::Active) {
@@ -95,7 +95,7 @@ impl App {
                 let pred = self.prediction_state.name.clone();
                 let path = self.config_path.join("predictions").join(format!("{}.json", pred));
                 fs::write(&path, json).unwrap();
-                let preds = Self::load_predictions(self.config_path.join("predictions"));
+                let preds = Self::load_files(self.config_path.join("predictions"));
                 self.predictions = preds;
                 self.selected_prediction = Some(pred);
                 self.prediction_loaded = true;
@@ -304,7 +304,7 @@ impl App {
         }
         let btn_row = row![submit_btn, lock_btn, cancel_btn].spacing(SPACING);
 
-        let status_text = prediction::get_state_text(&state);
+        let status_text = get_state_text(&state);
         let status_display = Text::new(status_text);
 
         Container::new(row![column![save_row, title_input, opt_col, option_btn_row, rule::horizontal(2), duration_row, rule::horizontal(2), btn_row, status_display].spacing(SPACING)])
