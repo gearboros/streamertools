@@ -7,17 +7,15 @@ mod auth;
 use std::fs;
 use std::path::PathBuf;
 use std::time::Duration;
-use iced::widget::{button, center, column, container, mouse_area, opaque, pick_list, row, rule, stack, text, text_input, Button, Checkbox, Column, Container, PickList, Text, TextInput};
+use iced::widget::{button, center, column, container, row, stack, text, Container, Text};
 use iced::{time, Color, Element, Length, Renderer, Subscription, Task, Theme};
 use iced::alignment::Vertical;
 use crate::twitch_auth::*;
 use tracing::info;
 use iced_aw::{TabBar, TabLabel};
-use serde::{Serialize};
 use directories::ProjectDirs;
 use auth::AuthMessage;
 use poll::{PollMessage, PollState};
-use prediction::PredictionMessage::{CancelPrediction, LockPrediction, PredictionEnded};
 use prediction::{PredictionMessage, PredictionState};
 use twitch_api::*;
 
@@ -63,7 +61,6 @@ struct App {
     broadcaster_id: Option<String>,
     access_token: Option<String>,
     refresh_token: Option<String>,
-    result: String,
     loading: bool,
     auth_status: String,
     // Device code flow UI state
@@ -71,7 +68,6 @@ struct App {
     auth_in_progress: bool,
     phase: AppPhase,
     active_tab: TabId,
-    tabs: Vec<(String, String)>,
     err: String,
     poll_state: PollState,
     polls: Vec<String>,
@@ -99,7 +95,6 @@ enum Message {
     TabSelected(usize),
     Poll(PollMessage),
     Prediction(PredictionMessage),
-    TabClosed(usize),
     Error(String),
     ClearError,
     PredictionTick,
@@ -118,9 +113,6 @@ impl App {
             }
             Message::TabSelected(idx) => {
                 self.active_tab = TabId::from_idx(idx);
-                Task::none()
-            }
-            Message::TabClosed(_idx) => {
                 Task::none()
             }
             Message::Prediction(pred_message) => {
@@ -196,7 +188,7 @@ impl App {
         }
     }
 
-    fn view(&self) -> Element<Message> {
+    fn view(&'_ self) -> Element<'_, Message> {
         let tab_bar = TabBar::new(Message::TabSelected)
             .push(TabId::Prediction.idx(), TabLabel::Text("Prediction".into()))
             .push(TabId::Poll.idx(), TabLabel::Text("Poll".into()))
@@ -257,7 +249,7 @@ impl App {
         match &self.active_tab {
             TabId::Prediction => self.get_prediction_tab_content(),
             TabId::Poll => self.get_poll_tab_content(),
-            TabId::Misc => Container::new(row![Text::new("Profile content")]).into(),
+            TabId::Misc => Container::new(row![Text::new("Your ad could be here!")]).into(),
         }
     }
 }
@@ -278,6 +270,7 @@ fn main() -> iced::Result {
 
     iced::application(App::new, App::update, App::view)
         .title("Streamer Tools")
+        .font(iced_aw::ICED_AW_FONT_BYTES)
         .subscription(subscription)
         .run()
 }
@@ -296,13 +289,13 @@ impl App {
         let poll_state = PollState {
             options: vec![String::new(), String::new()],
             id: None,
-            duration: 300,
+            duration: 10,
             channel_point_cost: 5000,
             ..Default::default()
         };
         let prediction_state = PredictionState {
             options: vec![String::new(), String::new()],
-            duration: 600,
+            duration: 10,
             id: None,
             ..Default::default()
         };
@@ -321,10 +314,7 @@ impl App {
             };
             info!("App state: {:?}", app.access_token);
             info!("App state: {:?}", app.refresh_token);
-            let task = Task::perform(
-                async move { validate_token(&access).await },
-                |result| Message::Auth(AuthMessage::TokenValidated(result)),
-            );
+            let task = Task::done(Message::Auth(AuthMessage::ValidateToken));
             return (app, task);
         }
         info!("No tokens found in keyring");

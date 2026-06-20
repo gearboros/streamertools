@@ -1,13 +1,10 @@
-use std::fmt::format;
 use std::fs;
-use iced::{Center, Element, Renderer, Task, Theme};
+use iced::{Center, Element, Length, Renderer, Task, Theme};
 use iced::widget::{button, checkbox, pick_list, row, text_input, column, Button, Checkbox, Column, Container, PickList, Text, TextInput, rule};
 use iced_aw::number_input;
-use rand::prelude::SliceRandom;
-use rand::rng;
 use serde::{Deserialize, Serialize};
 use crate::{App, Message, SPACING};
-use crate::poll::PollMessage::{AddOption, ChannelPointsToggled, ConfigLoaded, ConfigSelected, DurationChange, EndPoll, LoadConfig, NameChanged, NewConfig, OptionChanged, PointCostChange, PollCreated, PollEnded, RemoveOption, SaveConfig, Submit, SwitchOptions, TitleChanged};
+use crate::poll::PollMessage::DurationChange;
 use crate::twitch_api::{create_poll, end_poll, CreatePollRequest, PollChoice, PollPhase, PollStateData};
 
 impl App {
@@ -28,7 +25,7 @@ impl App {
                             title: o.clone()
                         }
                     }).collect(),
-                    duration: self.poll_state.duration,
+                    duration: self.poll_state.duration * 60,
                     channel_points_voting_enabled: self.poll_state.uses_channel_points,
                     channel_points_per_vote: self.poll_state.channel_point_cost,
                 };
@@ -105,9 +102,6 @@ impl App {
             }
             ConfigSelected(c) => {
                 self.selected_poll = Some(c.clone());
-                Task::none()
-            }
-            LoadConfig => {
                 let selection = &self.selected_poll;
                 if let Some(poll) = selection {
                     let path = &self.config_path.join("polls").join(format!("{}.json", poll));
@@ -124,9 +118,6 @@ impl App {
                 }
                 Task::none()
             }
-            ConfigLoaded => {
-                Task::none()
-            }
             NewConfig => {
                 self.poll_loaded = false;
                 self.selected_poll = None;
@@ -136,21 +127,11 @@ impl App {
                 self.poll_state.name = name;
                 Task::none()
             }
-            SwitchOptions => {
-                if self.poll_state.options.len() == 2 {
-                    self.poll_state.options.swap(0, 1);
-                } else {
-                    self.poll_state.options.shuffle(&mut rng())
-                }
-                Task::none()
-            }
         }
     }
 
     pub(crate) fn get_poll_tab_content(&self) -> Element<'static, Message, Theme, Renderer> {
         let dropdown: PickList<'_, String, Vec<String>, String, Message> = pick_list(self.polls.clone(), self.selected_poll.clone(), |t| Message::Poll(PollMessage::ConfigSelected(t)));
-        let load_btn: Button<_> = button("Load")
-            .on_press(Message::Poll(PollMessage::LoadConfig));
         let state = self.poll_state.clone();
         let mut name_input: TextInput<_> = text_input("Config Name", &state.name);
         if !self.poll_loaded {
@@ -161,7 +142,7 @@ impl App {
         let save_btn: Button<_> = button("Save")
             .on_press(Message::Poll(PollMessage::SaveConfig));
 
-        let save_row = row![dropdown, name_input, new_btn, load_btn, save_btn].spacing(SPACING);
+        let save_row = row![dropdown, name_input, new_btn, save_btn].spacing(SPACING);
 
         let title_input = text_input("Poll title", &state.title)
             .on_input(|r| Message::Poll(PollMessage::TitleChanged(r)));
@@ -177,17 +158,13 @@ impl App {
         }
 
         let add_btn = button("+").on_press(Message::Poll(PollMessage::AddOption));
-        let switch_btn = button("Switch Options").on_press(Message::Poll(PollMessage::SwitchOptions));
-        let shuffle_btn = button("Shuffle Options").on_press(Message::Poll(PollMessage::SwitchOptions));
-        let mut option_btn_row = row![add_btn].spacing(SPACING);
-        if state.options.len() == 2 {
-            option_btn_row = option_btn_row.push(switch_btn)
-        } else {
-            option_btn_row = option_btn_row.push(shuffle_btn)
-        }
+        let option_btn_row = row![add_btn].spacing(SPACING);
 
-        let duration_text = Text::new("Duration in s: ");
-        let duration_inp = number_input(&state.duration, 0..=600, |d| Message::Poll(PollMessage::DurationChange(d)));
+        let duration_text = Text::new("Duration in mins: ");
+        let mut duration_inp = number_input(&state.duration, 1..=30, |d| Message::Poll(DurationChange(d)));
+        if state.id.is_some() {
+            duration_inp = duration_inp.on_input_maybe(None::<fn(usize) -> Message>)
+        }
 
         let duration_row = row![duration_text, duration_inp].align_y(Center);
 
@@ -207,8 +184,7 @@ impl App {
             btns = btns.push(end_btn)
         }
 
-        let status_text = get_state_text(&state);
-        let status_display = Text::new(status_text);
+        let status_display = get_state_view(&state);
 
         Container::new(row![column![save_row, title_input, opt_col, option_btn_row, rule::horizontal(2), duration_row, rule::horizontal(2), channel_row, rule::horizontal(2), btns, status_display].spacing(SPACING)])
             .max_width(600).into()
@@ -216,40 +192,49 @@ impl App {
 
 }
 
-fn get_state_text(state: &PollState) -> String {
+fn get_state_view(state: &PollState) -> Element<'static, Message, Theme, Renderer> {
     if state.phase.is_none() {
-        String::from("No Poll active.")
+        Text::new("No Poll active.").into()
     } else if state.phase == Some(PollPhase::Active) {
-        let distribution = get_votes_result(&state.current_state);
-        String::from(format!("Voting active, currently at: {}", distribution))
+        column![Text::new("Voting active, currently at:"), get_votes_result(&state.current_state)]
+            .spacing(SPACING).into()
     } else if state.phase == Some(PollPhase::Completed) || state.phase == Some(PollPhase::Archived) {
-        let distribution = get_votes_result(&state.current_state);
-        String::from(format!("Voting closed, Result: {}", distribution))
+        column![Text::new("Voting closed, Result:"), get_votes_result(&state.current_state)]
+            .spacing(SPACING).into()
     } else {
-        String::new()
+        Text::new("").into()
     }
 }
 
-fn get_votes_result(state: &Option<PollStateData>) -> String {
-    state.clone().map_or(String::from("No Poll Active"), |state| {
-        let total_votes = state.choices.iter().map(|c| c.votes).sum::<i32>();
-        let total_popular_votes = state.choices.iter().map(|c| c.popular_votes()).sum::<i32>();
-        let total_point_votes = state.choices.iter().map(|c| c.channel_point_votes).sum::<i32>();
+fn get_votes_result(state: &Option<PollStateData>) -> Element<'static, Message, Theme, Renderer> {
+    let Some(state) = state.clone() else {
+        return Text::new("No Poll Active").into();
+    };
+    let total_votes = state.choices.iter().map(|c| c.votes).sum::<i32>();
+    let total_popular_votes = state.choices.iter().map(|c| c.popular_votes()).sum::<i32>();
+    let total_point_votes = state.choices.iter().map(|c| c.channel_point_votes).sum::<i32>();
 
-        let winner_text = get_winner_text(&state);
+    let winner_text = get_winner_text(&state);
 
-        let mut by_votes = state.choices.clone();
-        by_votes.sort_by_key(|c| std::cmp::Reverse(c.votes));
+    let mut by_votes = state.choices.clone();
+    by_votes.sort_by_key(|c| std::cmp::Reverse(c.votes));
 
-        let list = by_votes.iter().fold(String::new(), |acc, o| {
-            let vote_percent = if total_votes == 0 { 0f64 } else { (o.votes as f64) / (total_votes as f64) * 100.0 };
-            let pop_vote_percent = if total_popular_votes == 0 { 0f64 } else { (o.popular_votes() as f64) / (total_popular_votes as f64) * 100.0 };
-            let point_vote_percent = if total_point_votes == 0 { 0f64 } else { (o.channel_point_votes as f64) / (total_point_votes as f64) * 100.0 };
-            let current = format!("- {}: {:.2} of votes, {:.2}% of user votes, {:.2}% of point votes.\n", o.title, vote_percent, pop_vote_percent, point_vote_percent);
-            acc + current.as_str()
-        });
-        String::from(format!("{}\n, Total: {} votes, {} user votes, {} point votes\n{}", winner_text, total_votes, total_popular_votes, total_point_votes, list))
-    })
+    let mut col: Column<_> = column![
+        Text::new(winner_text),
+        Text::new(format!("Total: {} votes, {} user votes, {} point votes", total_votes, total_popular_votes, total_point_votes)),
+    ].spacing(SPACING);
+    for o in &by_votes {
+        let vote_percent = if total_votes == 0 { 0f64 } else { (o.votes as f64) / (total_votes as f64) * 100.0 };
+        let pop_vote_percent = if total_popular_votes == 0 { 0f64 } else { (o.popular_votes() as f64) / (total_popular_votes as f64) * 100.0 };
+        let point_vote_percent = if total_point_votes == 0 { 0f64 } else { (o.channel_point_votes as f64) / (total_point_votes as f64) * 100.0 };
+        col = col.push(row![
+            Text::new(o.title.clone()).width(Length::FillPortion(2)),
+            Text::new(format!("{:.2}% of votes", vote_percent)).width(Length::FillPortion(2)),
+            Text::new(format!("{:.2}% of user votes", pop_vote_percent)).width(Length::FillPortion(2)),
+            Text::new(format!("{:.2}% of point votes", point_vote_percent)).width(Length::FillPortion(2)),
+        ].spacing(SPACING));
+    }
+    col.into()
 }
 
 fn get_winner_text(state: &PollStateData) -> String {
@@ -302,10 +287,7 @@ pub enum PollMessage {
     EndPoll,
     PollEnded,
     ConfigSelected(String),
-    LoadConfig,
-    ConfigLoaded,
     SaveConfig,
     NewConfig,
     NameChanged(String),
-    SwitchOptions,
 }

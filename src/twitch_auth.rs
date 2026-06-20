@@ -3,7 +3,6 @@ use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
 use std::path::PathBuf;
 use std::fs;
-use serde_json::from_slice;
 use crate::CLIENT_ID;
 
 #[derive(Serialize, Deserialize)]

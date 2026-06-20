@@ -1,4 +1,3 @@
-use iced::wgpu::PollStatus;
 use reqwest::{RequestBuilder, Response};
 use serde::{Deserialize, Serialize};
 use crate::CLIENT_ID;
