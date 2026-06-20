@@ -162,7 +162,7 @@ impl App {
                             title: o.clone()
                         }
                     }).collect(),
-                    prediction_window: self.poll_state.duration,
+                    prediction_window: self.prediction_state.duration,
                 };
                 Task::perform(
                     async move { create_prediction(&token, request).await },
