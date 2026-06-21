@@ -1,11 +1,11 @@
 use crate::twitch_api::{
-    CreatePredictionRequest, CreatePredictionResponseData, EndPredictionRequest, PollChoice,
-    PredictionStatus, cancel_prediction, create_prediction, end_prediction, lock_prediction,
+    cancel_prediction, create_prediction, end_prediction, lock_prediction,
+    CreatePredictionRequest, CreatePredictionResponseData, EndPredictionRequest, PollChoice, PredictionStatus,
 };
-use crate::{App, AppPhase, Message, SPACING, load_config, prediction, save_config};
+use crate::{load_config, prediction, save_config, App, AppPhase, Message, SPACING};
 use iced::widget::{
-    Button, Column, Container, PickList, Text, TextInput, button, column, container, pick_list,
-    row, rule, text_input,
+    button, column, container, pick_list, row, rule, text_input, Button, Column, Container,
+    PickList, Text, TextInput,
 };
 use iced::{Center, Element, Length, Renderer, Task, Theme};
 use iced_aw::number_input;
@@ -167,7 +167,6 @@ impl App {
                 Task::none()
             }
             Submit => {
-                self.prediction_state.phase = Some(PredictionStatus::Active);
                 let token = self.access_token.clone().unwrap_or_default();
                 let request = CreatePredictionRequest {
                     broadcaster_id: self.broadcaster_id.clone().unwrap_or_default(),
@@ -190,6 +189,7 @@ impl App {
             PredictionCreated(r) => match r {
                 Ok(data) => {
                     self.prediction_state.current_state = Some(data);
+                    self.prediction_state.phase = Some(PredictionStatus::Active);
                     self.phase = AppPhase::PredictionPolling;
                     Task::none()
                 }
@@ -253,7 +253,10 @@ impl App {
                 )
             }
             PredictionLocked(r) => match r {
-                Ok(()) => Task::none(),
+                Ok(()) => {
+                    self.prediction_state.phase = Some(PredictionStatus::Locked);
+                    Task::none()
+                }
                 Err(e) => Task::done(Message::Error(e)),
             },
             CancelPrediction => {
@@ -266,7 +269,10 @@ impl App {
                 )
             }
             PredictionCanceled(r) => match r {
-                Ok(()) => Task::none(),
+                Ok(()) => {
+                    self.prediction_state.phase == Some(PredictionStatus::Canceled);
+                    Task::none()
+                }
                 Err(e) => Task::done(Message::Error(e)),
             },
             ResetPrediction => {

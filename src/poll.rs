@@ -2,6 +2,7 @@ use crate::poll::PollMessage::DurationChange;
 use crate::twitch_api::{
     create_poll, end_poll, CreatePollRequest, PollChoice, PollPhase, PollStateData,
 };
+use crate::AppPhase::NoPolling;
 use crate::{load_config, save_config, App, AppPhase, Message, SPACING};
 use iced::widget::{
     button, checkbox, column, container, pick_list, row, rule, text_input, Button, Checkbox,
@@ -20,7 +21,6 @@ impl App {
                 Task::none()
             }
             Submit => {
-                self.poll_state.phase = Some(PollPhase::Active);
                 let token = self.access_token.clone().unwrap_or_default();
                 let request = CreatePollRequest {
                     broadcaster_id: self.broadcaster_id.clone().unwrap_or_default(),
@@ -62,6 +62,7 @@ impl App {
                 Ok(resp) => {
                     self.phase = AppPhase::PollPolling;
                     self.poll_state.current_state = Some(resp);
+                    self.poll_state.phase = Some(PollPhase::Active);
                     Task::none()
                 }
                 Err(e) => {
@@ -93,6 +94,7 @@ impl App {
             }
             PollEnded(r) => match r {
                 Ok(()) => {
+                    self.phase = NoPolling;
                     self.poll_state.current_state = None;
                     Task::none()
                 }
