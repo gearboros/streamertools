@@ -121,7 +121,7 @@ pub async fn refresh_access_token(refresh_token: &str) -> Result<(String, String
     Ok((tokens.access_token, tokens.refresh_token))
 }
 
-/// Saves the tokens to a OS provided keyring, falls back to a storage file if that fails.
+/// Saves the tokens to an OS provided keyring, falls back to a storage file if that fails.
 pub fn save_tokens(access: &str, refresh: &str, path: &PathBuf) -> Result<(), String> {
     info!("Saving tokens...");
 

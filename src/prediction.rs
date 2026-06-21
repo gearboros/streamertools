@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::fs;
 use iced::{Center, Element, Length, Renderer, Task, Theme};
 use iced::widget::{button, pick_list, row, text_input, column, Button, Column, Container, PickList, Text, TextInput, rule};
@@ -17,11 +16,7 @@ pub struct PredictionState {
     pub(crate) duration: usize,
     pub(crate) name: String,
     #[serde(skip_serializing, skip_deserializing)]
-    pub(crate) id: Option<String>,
-    #[serde(skip_serializing, skip_deserializing)]
     pub(crate) phase: Option<PredictionStatus>,
-    #[serde(skip_serializing, skip_deserializing)]
-    pub(crate) outcomes: HashMap<String, String>,
     #[serde(skip_serializing, skip_deserializing)]
     pub(crate) current_state: Option<CreatePredictionResponseData>,
 }
@@ -35,7 +30,7 @@ pub enum PredictionMessage {
     Submit,
     PredictionCreated(Result<CreatePredictionResponseData, String>),
     DurationChange(usize),
-    WinnerChosen(usize),
+    WinnerChosen(String),
     PredictionEnded,
     ConfigSelected(String),
     SaveConfig,
@@ -138,8 +133,8 @@ impl App {
                 Task::none()
             }
             Submit => {
-                let token = self.access_token.clone().unwrap_or_default();
                 self.prediction_state.phase = Some(PredictionStatus::Active);
+                let token = self.access_token.clone().unwrap_or_default();
                 let request = CreatePredictionRequest {
                     broadcaster_id: self.broadcaster_id.clone().unwrap_or_default(),
                     title: self.prediction_state.title.clone(),
@@ -158,9 +153,8 @@ impl App {
             PredictionCreated(r) => {
                 match r {
                     Ok(data) => {
+                        self.prediction_state.current_state = Some(data);
                         self.phase = AppPhase::PredictionPolling;
-                        self.prediction_state.id = Some(data.id);
-                        self.prediction_state.outcomes = data.outcomes.iter().map(|o| (o.title.clone(), o.id.clone())).collect();
                         Task::none()
                     }
                     Err(e) => {
@@ -173,13 +167,13 @@ impl App {
                 self.prediction_state.duration = d;
                 Task::none()
             }
-            WinnerChosen(idx) => {
+            WinnerChosen(id) => {
                 self.phase = AppPhase::NoPolling;
                 let token = self.access_token.clone().unwrap_or_default();
                 let request = EndPredictionRequest {
-                    outcome_id: self.prediction_state.outcomes.get(&self.prediction_state.options[idx].clone()).unwrap().to_string(),
+                    outcome_id: id,
                     broadcaster_id: self.broadcaster_id.clone().unwrap_or_default(),
-                    prediction_id: self.prediction_state.id.clone().unwrap(),
+                    prediction_id: self.prediction_state.current_state.clone().unwrap().id.clone(),
                 };
                 Task::perform(
                     async move { end_prediction(request, &token).await },
@@ -187,7 +181,7 @@ impl App {
                 )
             }
             PredictionEnded => {
-                self.prediction_state.id = None;
+                self.prediction_state.current_state = None;
                 self.prediction_state.phase = Some(PredictionStatus::Resolved);
                 Task::none()
             }
@@ -211,21 +205,13 @@ impl App {
             }
             LockPrediction => {
                 let token = self.access_token.clone().unwrap_or_default();
-                let request = EndPredictionRequest {
-                    outcome_id: String::new(),
-                    broadcaster_id: self.broadcaster_id.clone().unwrap_or_default(),
-                    prediction_id: self.prediction_state.id.clone().unwrap(),
-                };
+                let request = self.create_end_prediction_request();
                 Task::future(
                     async move { lock_prediction(request, &token).await }).discard()
             }
             CancelPrediction => {
                 let token = self.access_token.clone().unwrap_or_default();
-                let request = EndPredictionRequest {
-                    outcome_id: String::new(),
-                    broadcaster_id: self.broadcaster_id.clone().unwrap_or_default(),
-                    prediction_id: self.prediction_state.current_state.clone().unwrap().id.clone(),
-                };
+                let request = self.create_end_prediction_request();
                 Task::future(
                     async move { cancel_prediction(request, &token).await }).discard()
             }
@@ -234,6 +220,15 @@ impl App {
                 Task::none()
             }
         }
+    }
+
+    fn create_end_prediction_request(&mut self) -> EndPredictionRequest {
+        let request = EndPredictionRequest {
+            outcome_id: String::new(),
+            broadcaster_id: self.broadcaster_id.clone().unwrap_or_default(),
+            prediction_id: self.prediction_state.current_state.clone().unwrap().id.clone(),
+        };
+        request
     }
 
     pub(crate) fn get_prediction_tab_content(&self) -> Element<'static, Message, Theme, Renderer> {
@@ -265,11 +260,11 @@ impl App {
             }
         } else {
             if state.current_state.is_some() {
-                for (idx, option) in state.current_state.clone().unwrap().outcomes.iter().enumerate() {
+                for option in state.current_state.clone().unwrap().outcomes.iter() {
                     let text = Text::new(option.title.clone()).width(Length::Fill);
                     let mut win_btn = button("Winner!");
-                    if state.id.is_some() && state.phase == Some(PredictionStatus::Locked) {
-                        win_btn = win_btn.on_press(Message::Prediction(PredictionMessage::WinnerChosen(idx)));
+                    if state.current_state.is_some() && state.phase == Some(PredictionStatus::Locked) {
+                        win_btn = win_btn.on_press(Message::Prediction(PredictionMessage::WinnerChosen(option.id.clone())));
                     }
                     opt_col = opt_col.push(row![text, win_btn].align_y(Center).spacing(SPACING));
                 }
@@ -293,7 +288,7 @@ impl App {
 
         let duration_text = Text::new("Duration in mins: ");
         let mut duration_inp = number_input(&state.duration, 1..=30, |d| Message::Prediction(PredictionMessage::DurationChange(d)));
-        if state.id.is_some() {
+        if state.current_state.is_some() {
             duration_inp = duration_inp.on_input_maybe(None::<fn(usize) -> Message>);
         }
 

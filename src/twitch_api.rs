@@ -1,3 +1,4 @@
+use iced::wgpu::PollStatus;
 use reqwest::{RequestBuilder, Response};
 use serde::{Deserialize, Serialize};
 use crate::CLIENT_ID;
@@ -37,20 +38,10 @@ pub struct PollChoice {
     pub title: String,
 }
 
-#[derive(Debug, Deserialize)]
-struct PollResponse {
-    data: Vec<PollId>,
-}
-
-#[derive(Debug, Deserialize)]
-struct PollId {
-    id: String,
-}
-
 pub async fn create_poll(
     access_token: &str,
     request: CreatePollRequest,
-) -> Result<String, String> {
+) -> Result<PollStateData, String> {
     let resp = reqwest::Client::new()
         .post("https://api.twitch.tv/helix/polls")
         .header("Authorization", format!("Bearer {}", access_token))
@@ -66,8 +57,8 @@ pub async fn create_poll(
         return Err(format!("Create poll failed: {}", err_text));
     }
 
-    let parsed: PollResponse = resp.json::<PollResponse>().await.map_err(|e| e.to_string())?;
-    Ok(parsed.data.first().unwrap().id.clone())
+    let parsed: PollStateResponse = resp.json::<PollStateResponse>().await.map_err(|e| e.to_string())?;
+    Ok(parsed.data.first().unwrap().clone())
 }
 
 pub async fn end_poll(broadcaster_id: &str, poll_id: &str, access_token: &str) -> Result<(), String> {

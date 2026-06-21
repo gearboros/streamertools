@@ -132,7 +132,7 @@ impl App {
             Message::PredictionTick => {
                 if self.phase == AppPhase::PredictionPolling {
                     let broadcaster_id = self.broadcaster_id.clone().unwrap();
-                    let pred_id = self.prediction_state.id.clone().unwrap();
+                    let pred_id = self.prediction_state.current_state.clone().unwrap().id;
                     let token = self.access_token.clone().unwrap();
                     Task::perform(async move {
                         check_prediction(&broadcaster_id, &pred_id, &token).await },
@@ -160,7 +160,7 @@ impl App {
             Message::PollTick => {
                 if self.phase == AppPhase::PollPolling {
                     let broadcaster_id = self.broadcaster_id.clone().unwrap();
-                    let poll_id = self.poll_state.id.clone().unwrap();
+                    let poll_id = self.poll_state.current_state.clone().unwrap().id.clone();
                     let token = self.access_token.clone().unwrap();
                     Task::perform(async move {
                         check_poll(&broadcaster_id, &poll_id, &token).await },
@@ -288,7 +288,6 @@ impl App {
 
         let poll_state = PollState {
             options: vec![String::new(), String::new()],
-            id: None,
             duration: 10,
             channel_point_cost: 5000,
             ..Default::default()
@@ -296,7 +295,6 @@ impl App {
         let prediction_state = PredictionState {
             options: vec![String::new(), String::new()],
             duration: 10,
-            id: None,
             ..Default::default()
         };
         if let Some((access, refresh)) = load_tokens(&config_path) {

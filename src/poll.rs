@@ -3,7 +3,7 @@ use iced::{Center, Element, Length, Renderer, Task, Theme};
 use iced::widget::{button, checkbox, pick_list, row, text_input, column, Button, Checkbox, Column, Container, PickList, Text, TextInput, rule};
 use iced_aw::number_input;
 use serde::{Deserialize, Serialize};
-use crate::{App, Message, SPACING};
+use crate::{App, AppPhase, Message, SPACING};
 use crate::poll::PollMessage::DurationChange;
 use crate::twitch_api::{create_poll, end_poll, CreatePollRequest, PollChoice, PollPhase, PollStateData};
 
@@ -16,6 +16,7 @@ impl App {
                 Task::none()
             }
             Submit => {
+                self.poll_state.phase = Some(PollPhase::Active);
                 let token = self.access_token.clone().unwrap_or_default();
                 let request = CreatePollRequest {
                     broadcaster_id: self.broadcaster_id.clone().unwrap_or_default(),
@@ -53,13 +54,12 @@ impl App {
             }
             PollCreated(r) => {
                 match r {
-                    Ok(id) => {
-                        self.poll_state.id = Some(id);
-                        println!("Poll created successfully");
+                    Ok(resp) => {
+                        self.phase = AppPhase::PollPolling;
+                        self.poll_state.current_state = Some(resp);
                         Task::none()
                     }
                     Err(e) => {
-                        eprintln!("Poll creation failed: {}", e);
                         Task::done(Message::Error(e.to_string()))
                     }
                 }
@@ -79,14 +79,14 @@ impl App {
             EndPoll => {
                 let token = self.access_token.clone().unwrap_or_default();
                 let broadcaster = self.broadcaster_id.clone().unwrap_or_default();
-                let poll_id = self.poll_state.id.clone().unwrap_or_default();
+                let poll_id = self.poll_state.current_state.clone().unwrap().id.clone();
                 Task::perform(
                     async move { end_poll(&broadcaster, &poll_id, &token).await },
                     |_| Message::Poll(PollEnded)
                 )
             }
             PollEnded => {
-                self.poll_state.id = None;
+                self.poll_state.current_state = None;
                 Task::none()
             }
             SaveConfig => {
@@ -162,7 +162,7 @@ impl App {
 
         let duration_text = Text::new("Duration in mins: ");
         let mut duration_inp = number_input(&state.duration, 1..=30, |d| Message::Poll(DurationChange(d)));
-        if state.id.is_some() {
+        if state.current_state.is_some() {
             duration_inp = duration_inp.on_input_maybe(None::<fn(usize) -> Message>)
         }
 
@@ -180,7 +180,7 @@ impl App {
         let submit_btn = button("Submit").on_press(Message::Poll(PollMessage::Submit));
         let end_btn = button("End Poll").on_press(Message::Poll(PollMessage::EndPoll));
         let mut btns = row![submit_btn].spacing(SPACING);
-        if !&state.id.is_none() {
+        if state.phase == Some(PollPhase::Active) {
             btns = btns.push(end_btn)
         }
 
@@ -265,8 +265,6 @@ pub struct PollState {
     pub uses_channel_points: bool,
     pub channel_point_cost: usize,
     #[serde(skip_serializing, skip_deserializing)]
-    pub id: Option<String>,
-    #[serde(skip_serializing, skip_deserializing)]
     pub phase: Option<PollPhase>,
     #[serde(skip_serializing, skip_deserializing)]
     pub current_state: Option<PollStateData>,
@@ -280,7 +278,7 @@ pub enum PollMessage {
     AddOption,
     RemoveOption(usize),
     Submit,
-    PollCreated(Result<String, String>),
+    PollCreated(Result<PollStateData, String>),
     DurationChange(usize),
     ChannelPointsToggled(bool),
     PointCostChange(usize),
