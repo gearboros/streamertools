@@ -181,7 +181,7 @@ async fn set_prediction_state(request: EndPredictionRequest, access_token: &str,
     let uri = format!("https://api.twitch.tv/helix/predictions?broadcaster_id={}&id={}&status={}&winning_outcome_id={}",
                       request.broadcaster_id,
                       request.prediction_id,
-                        status.as_str(),
+                      status.as_str(),
                       request.outcome_id);
     let builder = reqwest::Client::new()
         .patch(uri);
@@ -196,7 +196,7 @@ async fn set_prediction_state(request: EndPredictionRequest, access_token: &str,
     Ok(())
 }
 
-pub async fn check_prediction(broadcaster_id: &str, prediction_id: &str, access_token: &String) -> Result<CreatePredictionResponseData, String> {
+pub async fn check_prediction(broadcaster_id: &str, prediction_id: &str, access_token: &str) -> Result<CreatePredictionResponseData, String> {
     let uri = format!("https://api.twitch.tv/helix/predictions?broadcaster_id={}&id={}", broadcaster_id, prediction_id);
     let builder = reqwest::Client::new()
         .get(uri);
