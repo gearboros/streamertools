@@ -9,19 +9,19 @@ use auth::AuthMessage;
 use directories::ProjectDirs;
 use iced::alignment::Vertical;
 use iced::widget::space::horizontal;
-use iced::widget::{Container, Text, button, center, column, container, row, stack, text};
-use iced::{Color, Element, Length, Renderer, Subscription, Task, Theme, time};
+use iced::widget::{button, center, column, container, row, stack, text, Container, Text};
+use iced::{time, Color, Element, Length, Renderer, Subscription, Task, Theme};
 use iced_aw::{TabBar, TabLabel};
 use poll::{PollMessage, PollState};
 use prediction::{PredictionMessage, PredictionState};
-use serde::Serialize;
 use serde::de::DeserializeOwned;
+use serde::Serialize;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 use tracing::{error, info};
 use tracing_appender::rolling::Rotation;
-use tracing_subscriber::{EnvFilter, fmt, prelude::*};
+use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 use twitch_api::*;
 
 pub const CLIENT_ID: &str = "9w729lqufngx4sztgex20eztz7o879";
@@ -403,9 +403,15 @@ impl App {
     }
 }
 
-fn save_config<T: Serialize>(root: &Path, subdir: &str, name: &str, state: &T) {
-    let json = serde_json::to_string(state).unwrap();
+fn save_config<T: Serialize>(
+    root: &Path,
+    subdir: &str,
+    name: &str,
+    state: &T,
+) -> Result<(), String> {
+    let json = serde_json::to_string(state).map_err(|e| e.to_string())?;
     fs::write(root.join(subdir).join(format!("{name}.json")), json).unwrap();
+    Ok(())
 }
 
 fn load_config<T: DeserializeOwned>(root: &Path, subdir: &str, name: &str) -> Option<T> {

@@ -2,8 +2,8 @@ use crate::CLIENT_ID;
 use keyring::Entry;
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::{Path, PathBuf};
-use tracing::{error, info, warn};
+use std::path::PathBuf;
+use tracing::{error, info};
 
 #[derive(Serialize, Deserialize)]
 struct StoredTokens {

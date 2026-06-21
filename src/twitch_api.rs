@@ -1,6 +1,6 @@
 use crate::CLIENT_ID;
-use iced::wgpu::PollStatus;
 use reqwest::{RequestBuilder, Response};
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use tracing::error;
 
@@ -44,15 +44,10 @@ pub async fn create_poll(
     access_token: &str,
     request: CreatePollRequest,
 ) -> Result<PollStateData, String> {
-    let resp = client
+    let builder = client
         .post("https://api.twitch.tv/helix/polls")
-        .header("Authorization", format!("Bearer {}", access_token))
-        .header("Client-Id", CLIENT_ID)
-        .header("Content-Type", "application/json")
-        .json(&request)
-        .send()
-        .await
-        .map_err(|e| format!("Request error: {}", e))?;
+        .json(&request);
+    let resp = add_headers_and_send(access_token, builder).await?;
 
     if !resp.status().is_success() {
         let err_text = resp.text().await.unwrap_or_default();
@@ -60,11 +55,20 @@ pub async fn create_poll(
         return Err(format!("Create poll failed: {}", err_text));
     }
 
-    let parsed: PollStateResponse = resp.json::<PollStateResponse>().await.map_err(|e| {
-        error!("Parse error: {}", e);
-        e.to_string()
-    })?;
-    Ok(parsed.data.first().unwrap().clone())
+    extract_poll_response(resp).await
+}
+
+async fn extract_poll_response(resp: Response) -> Result<PollStateData, String> {
+    resp.json::<PollStateResponse>()
+        .await
+        .map_err(|e| {
+            error!("Parse error: {}", e);
+            e.to_string()
+        })?
+        .data
+        .into_iter()
+        .next()
+        .ok_or_else(|| "Empty response from Twitch".to_string())
 }
 
 pub async fn end_poll(
@@ -138,34 +142,33 @@ pub async fn create_prediction(
     access_token: &str,
     request: CreatePredictionRequest,
 ) -> Result<CreatePredictionResponseData, String> {
-    let resp = client
+    let builder = client
         .post("https://api.twitch.tv/helix/predictions")
-        .header("Authorization", format!("Bearer {}", access_token))
-        .header("Client-Id", CLIENT_ID)
-        .header("Content-Type", "application/json")
-        .json(&request)
-        .send()
-        .await
-        .map_err(|e| format!("Request error: {}", e))?;
+        .json(&request);
+    let resp = add_headers_and_send(access_token, builder).await?;
 
     if !resp.status().is_success() {
         let err_text = resp.text().await.unwrap_or_default();
         error!("Request: {:?}, error: {}", request, err_text);
         return Err(format!("Create prediction failed: {}", err_text));
     }
-    // log before returning
-    // let bytes = resp.bytes().await.map_err(|e| e.to_string())?;
-    // println!("{}", std::str::from_utf8(&bytes).map_err(|e| e.to_string())?);
-    // let parsed: CreatePredictionResponse =
-    //     from_slice(&bytes).map_err(|e| e.to_string())?;
-    // Ok(parsed.data.first().unwrap().clone())
 
-    let parsed: CreatePredictionResponse =
-        resp.json::<CreatePredictionResponse>().await.map_err(|e| {
+    extract_prediction_response(resp).await
+}
+
+async fn extract_prediction_response(
+    resp: Response,
+) -> Result<CreatePredictionResponseData, String> {
+    resp.json::<CreatePredictionResponse>()
+        .await
+        .map_err(|e| {
             error!("Parse error: {}", e);
             e.to_string()
-        })?;
-    Ok(parsed.data.first().unwrap().clone())
+        })?
+        .data
+        .into_iter()
+        .next()
+        .ok_or_else(|| "Empty response from Twitch".to_string())
 }
 
 #[derive(Serialize, Debug)]
@@ -249,12 +252,7 @@ pub async fn check_prediction(
         return Err(format!("Checking prediction failed: {}", err_text));
     }
 
-    let parsed: CreatePredictionResponse =
-        resp.json::<CreatePredictionResponse>().await.map_err(|e| {
-            error!("Parse error: {}", e);
-            e.to_string()
-        })?;
-    Ok(parsed.data.first().unwrap().clone())
+    extract_prediction_response(resp).await
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -314,11 +312,7 @@ pub async fn check_poll(
         return Err(format!("Checking poll failed: {}", err_text));
     }
 
-    let parsed: PollStateResponse = resp.json::<PollStateResponse>().await.map_err(|e| {
-        error!("Parse error: {}", e);
-        e.to_string()
-    })?;
-    Ok(parsed.data.first().unwrap().clone())
+    extract_poll_response(resp).await
 }
 
 async fn add_headers_and_send(

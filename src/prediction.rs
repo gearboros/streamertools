@@ -1,11 +1,11 @@
 use crate::twitch_api::{
-    CreatePredictionRequest, CreatePredictionResponseData, EndPredictionRequest, PollChoice,
-    PredictionStatus, cancel_prediction, create_prediction, end_prediction, lock_prediction,
+    cancel_prediction, create_prediction, end_prediction, lock_prediction,
+    CreatePredictionRequest, CreatePredictionResponseData, EndPredictionRequest, PollChoice, PredictionStatus,
 };
-use crate::{App, AppPhase, Message, SPACING, load_config, prediction, save_config};
+use crate::{load_config, prediction, save_config, App, AppPhase, Message, SPACING};
 use iced::widget::{
-    Button, Column, Container, PickList, Text, TextInput, button, column, pick_list, row, rule,
-    text_input,
+    button, column, pick_list, row, rule, text_input, Button, Column, Container, PickList, Text,
+    TextInput,
 };
 use iced::{Center, Element, Length, Renderer, Task, Theme};
 use iced_aw::number_input;
@@ -118,12 +118,14 @@ impl App {
                 Task::none()
             }
             SaveConfig => {
-                save_config(
+                if let Err(e) = save_config(
                     &self.config_path,
                     "predictions",
                     &self.prediction_state.name,
                     &self.prediction_state,
-                );
+                ) {
+                    return Task::done(Message::Error(e.to_string()));
+                };
                 self.predictions = Self::load_files(self.config_path.join("predictions"));
                 self.selected_prediction = Some(self.prediction_state.name.clone());
                 self.prediction_loaded = true;

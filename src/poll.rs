@@ -1,11 +1,11 @@
 use crate::poll::PollMessage::DurationChange;
 use crate::twitch_api::{
-    CreatePollRequest, PollChoice, PollPhase, PollStateData, create_poll, end_poll,
+    create_poll, end_poll, CreatePollRequest, PollChoice, PollPhase, PollStateData,
 };
-use crate::{App, AppPhase, Message, SPACING, load_config, save_config};
+use crate::{load_config, save_config, App, AppPhase, Message, SPACING};
 use iced::widget::{
-    Button, Checkbox, Column, Container, PickList, Text, TextInput, button, checkbox, column,
-    pick_list, row, rule, text_input,
+    button, checkbox, column, pick_list, row, rule, text_input, Button, Checkbox, Column,
+    Container, PickList, Text, TextInput,
 };
 use iced::{Center, Element, Length, Renderer, Task, Theme};
 use iced_aw::number_input;
@@ -64,7 +64,10 @@ impl App {
                     self.poll_state.current_state = Some(resp);
                     Task::none()
                 }
-                Err(e) => Task::done(Message::Error(e.to_string())),
+                Err(e) => {
+                    self.poll_state.phase = None;
+                    Task::done(Message::Error(e.to_string()))
+                }
             },
             DurationChange(d) => {
                 self.poll_state.duration = d;
@@ -93,12 +96,14 @@ impl App {
                 Task::none()
             }
             SaveConfig => {
-                save_config(
+                if let Err(e) = save_config(
                     &self.config_path,
                     "polls",
                     &self.poll_state.name,
                     &self.poll_state,
-                );
+                ) {
+                    return Task::done(Message::Error(e.to_string()));
+                };
                 self.polls = Self::load_files(self.config_path.join("polls"));
                 self.selected_poll = Some(self.poll_state.name.clone());
                 self.poll_loaded = true;
