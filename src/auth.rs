@@ -25,9 +25,10 @@ impl App {
                 self.auth_in_progress = true;
                 self.device_code_info = None;
 
+                let client = self.client.clone();
                 Task::perform(
-                    async {
-                        match request_device_code().await {
+                    async move {
+                        match request_device_code(&client).await {
                             Ok(resp) => {
                                 // Open browser to verification URL
                                 let _ = open::that(&resp.verification_uri);
@@ -68,9 +69,10 @@ impl App {
                 }
             }
             PollForTokens { device_code, interval, expires_in } => {
+                let client = self.client.clone();
                 Task::perform(
                     async move {
-                        poll_for_tokens(&device_code, interval, expires_in).await
+                        poll_for_tokens(&client, &device_code, interval, expires_in).await
                     },
                     |result| Message::Auth(AuthCompleted(result)),
                 )
@@ -102,7 +104,8 @@ impl App {
             ValidateToken => {
                 if let Some(token) = &self.access_token {
                     let t = token.clone();
-                    Task::perform(async move { validate_token(&t).await }, |result| Message::Auth(TokenValidated(result)))
+                    let client = self.client.clone();
+                    Task::perform(async move { validate_token(&client, &t).await }, |result| Message::Auth(TokenValidated(result)))
                 } else {
                     Task::none()
                 }
@@ -127,7 +130,8 @@ impl App {
             RefreshToken => {
                 if let Some(refresh) = &self.refresh_token {
                     let t = refresh.clone();
-                    Task::perform(async move { refresh_access_token(&t).await }, |result| Message::Auth(AuthCompleted(result)))
+                    let client = self.client.clone();
+                    Task::perform(async move { refresh_access_token(&client, &t).await }, |result| Message::Auth(AuthCompleted(result)))
                 } else {
                     Task::none()
                 }

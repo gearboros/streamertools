@@ -30,8 +30,9 @@ impl App {
                     channel_points_voting_enabled: self.poll_state.uses_channel_points,
                     channel_points_per_vote: self.poll_state.channel_point_cost,
                 };
+                let client = self.client.clone();
                 Task::perform(
-                    async move { create_poll(&token, request).await },
+                    async move { create_poll(&client, &token, request).await },
                     |r| Message::Poll(PollCreated(r)),
                 )
 
@@ -80,8 +81,9 @@ impl App {
                 let token = self.access_token.clone().unwrap_or_default();
                 let broadcaster = self.broadcaster_id.clone().unwrap_or_default();
                 let poll_id = self.poll_state.current_state.clone().unwrap().id.clone();
+                let client = self.client.clone();
                 Task::perform(
-                    async move { end_poll(&broadcaster, &poll_id, &token).await },
+                    async move { end_poll(&client, &broadcaster, &poll_id, &token).await },
                     |_| Message::Poll(PollEnded)
                 )
             }

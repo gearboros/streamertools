@@ -145,8 +145,9 @@ impl App {
                     }).collect(),
                     prediction_window: self.prediction_state.duration * 60,
                 };
+                let client = self.client.clone();
                 Task::perform(
-                    async move { create_prediction(&token, request).await },
+                    async move { create_prediction(&client, &token, request).await },
                     |r| Message::Prediction(PredictionCreated(r)),
                 )
             }
@@ -175,8 +176,9 @@ impl App {
                     broadcaster_id: self.broadcaster_id.clone().unwrap_or_default(),
                     prediction_id: self.prediction_state.current_state.clone().unwrap().id.clone(),
                 };
+                let client = self.client.clone();
                 Task::perform(
-                    async move { end_prediction(request, &token).await },
+                    async move { end_prediction(&client, request, &token).await },
                     |_r| Message::Prediction(PredictionEnded),
                 )
             }
@@ -206,14 +208,16 @@ impl App {
             LockPrediction => {
                 let token = self.access_token.clone().unwrap_or_default();
                 let request = self.create_end_prediction_request();
+                let client = self.client.clone();
                 Task::future(
-                    async move { lock_prediction(request, &token).await }).discard()
+                    async move { lock_prediction(&client, request, &token).await }).discard()
             }
             CancelPrediction => {
                 let token = self.access_token.clone().unwrap_or_default();
                 let request = self.create_end_prediction_request();
+                let client = self.client.clone();
                 Task::future(
-                    async move { cancel_prediction(request, &token).await }).discard()
+                    async move { cancel_prediction(&client, request, &token).await }).discard()
             }
             ResetPrediction => {
                 self.prediction_state.phase = None;

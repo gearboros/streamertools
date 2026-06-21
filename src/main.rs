@@ -61,6 +61,7 @@ enum AppPhase {
 
 #[derive(Default, Debug)]
 struct App {
+    client: reqwest::Client,
     broadcaster_id: Option<String>,
     access_token: Option<String>,
     refresh_token: Option<String>,
@@ -138,8 +139,9 @@ impl App {
                     let broadcaster_id = self.broadcaster_id.clone().unwrap();
                     let pred_id = self.prediction_state.current_state.clone().unwrap().id;
                     let token = self.access_token.clone().unwrap();
+                    let client = self.client.clone();
                     Task::perform(async move {
-                        check_prediction(&broadcaster_id, &pred_id, &token).await },
+                        check_prediction(&client, &broadcaster_id, &pred_id, &token).await },
                                   |r| Message::PredictionPolled(r))
                 } else {
                     Task::none()
@@ -166,8 +168,9 @@ impl App {
                     let broadcaster_id = self.broadcaster_id.clone().unwrap();
                     let poll_id = self.poll_state.current_state.clone().unwrap().id.clone();
                     let token = self.access_token.clone().unwrap();
+                    let client = self.client.clone();
                     Task::perform(async move {
-                        check_poll(&broadcaster_id, &poll_id, &token).await },
+                        check_poll(&client, &broadcaster_id, &poll_id, &token).await },
                                   |r| Message::PollPolled(r))
                 } else {
                     Task::none()

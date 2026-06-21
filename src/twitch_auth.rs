@@ -32,8 +32,7 @@ struct DeviceTokenError {
 }
 
 /// Request Device Code from twitch, this is where the user accepts the requested scopes from the application.
-pub async fn request_device_code() -> Result<DeviceCodeResponse, String> {
-    let client = reqwest::Client::new();
+pub async fn request_device_code(client: &reqwest::Client) -> Result<DeviceCodeResponse, String> {
     let resp = client
         .post("https://id.twitch.tv/oauth2/device")
         .form(&[
@@ -57,11 +56,11 @@ pub async fn request_device_code() -> Result<DeviceCodeResponse, String> {
 /// access token for auth
 /// refresh token to refresh the auth token without the user having to re-auth
 pub async fn poll_for_tokens(
+    client: &reqwest::Client,
     device_code: &str,
     interval: u64,
     expires_in: u64,
 ) -> Result<(String, String), String> {
-    let client = reqwest::Client::new();
     let start = std::time::Instant::now();
     let timeout = std::time::Duration::from_secs(expires_in);
 
@@ -102,8 +101,7 @@ pub async fn poll_for_tokens(
 }
 
 /// Access tokens are short-lived, need refreshing regularly
-pub async fn refresh_access_token(refresh_token: &str) -> Result<(String, String), String> {
-    let client = reqwest::Client::new();
+pub async fn refresh_access_token(client: &reqwest::Client, refresh_token: &str) -> Result<(String, String), String> {
     let resp = client.post("https://id.twitch.tv/oauth2/token")
         .form(&[
             ("client_id", CLIENT_ID),
@@ -208,8 +206,8 @@ struct ValidationResponse {
 /// checks if current access token is valid
 /// if invalid tries to refresh
 /// if token can't be refreshed, tells the user to re-authenticate
-pub async fn validate_token(token: &str) -> Option<String> {
-    let resp = reqwest::Client::new()
+pub async fn validate_token(client: &reqwest::Client, token: &str) -> Option<String> {
+    let resp = client
         .get("https://id.twitch.tv/oauth2/validate")
         .header("Authorization", format!("OAuth {}", token))
         .send()
