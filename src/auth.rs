@@ -86,7 +86,7 @@ impl App {
                         self.auth_status = "Authenticated".to_string();
                         match resp {
                             Ok(_) => {
-                                Task::none()
+                                Task::done(Message::Auth(ValidateToken))
                             }
                             Err(_) => {
                                 Task::done(Message::Auth(ConfirmFallback))
