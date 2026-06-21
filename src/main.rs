@@ -208,6 +208,24 @@ impl App {
                         focus_next()
                     }
                 }
+                keyboard::Event::KeyPressed {
+                    key: keyboard::Key::Character(c),
+                    modifiers,
+                    ..
+                } => {
+                    if modifiers.control() {
+                        let tab = match c.as_str() {
+                            "1" => Some(TabId::Prediction),
+                            "2" => Some(TabId::Poll),
+                            "3" => Some(TabId::Misc),
+                            _ => None,
+                        };
+                        if let Some(tab) = tab {
+                            return self.update(Message::TabSelected(tab.idx()));
+                        }
+                    }
+                    Task::none()
+                }
                 _ => Task::none(),
             },
         }
