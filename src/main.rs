@@ -213,7 +213,8 @@ impl App {
         };
 
         let mut content = column![].spacing(SPACING);
-        let auth = row![auth_btn, text(&self.auth_status)]
+        let auth_text = self.auth_status.clone().trim().to_string();
+        let auth = row![auth_btn, text(auth_text)]
             .align_y(Vertical::Center)
             .spacing(SPACING);
         content = content.push(auth);
@@ -418,6 +419,18 @@ fn load_config<T: DeserializeOwned>(root: &Path, subdir: &str, name: &str) -> Op
     fs::read_to_string(root.join(subdir).join(format!("{name}.json")))
         .ok()
         .and_then(|t| serde_json::from_str(&t).ok())
+}
+
+fn empty_panel(
+    icon: &'static str,
+    heading: &'static str,
+) -> Element<'static, Message, Theme, Renderer> {
+    center(
+        column![text(icon).size(48), text(heading).size(20),]
+            .spacing(SPACING)
+            .align_x(iced::Center),
+    )
+    .into()
 }
 
 fn modal<'a>(

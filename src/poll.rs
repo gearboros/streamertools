@@ -4,8 +4,8 @@ use crate::twitch_api::{
 };
 use crate::{load_config, save_config, App, AppPhase, Message, SPACING};
 use iced::widget::{
-    button, checkbox, column, pick_list, row, rule, text_input, Button, Checkbox, Column,
-    Container, PickList, Text, TextInput,
+    button, checkbox, column, container, pick_list, row, rule, text_input, Button, Checkbox,
+    Column, Container, PickList, Text, TextInput,
 };
 use iced::{Center, Element, Length, Renderer, Task, Theme};
 use iced_aw::number_input;
@@ -195,30 +195,42 @@ impl App {
 
         let status_display = get_state_view(&state);
 
-        Container::new(row![
-            column![
-                save_row,
-                title_input,
-                opt_col,
-                option_btn_row,
-                rule::horizontal(2),
-                duration_row,
-                rule::horizontal(2),
-                channel_row,
-                rule::horizontal(2),
-                btns,
-                status_display
+        let form = column![
+            save_row,
+            title_input,
+            opt_col,
+            option_btn_row,
+            rule::horizontal(2),
+            duration_row,
+            rule::horizontal(2),
+            channel_row,
+            rule::horizontal(2),
+            btns,
+        ]
+        .spacing(SPACING);
+
+        let results = container(status_display)
+            .padding(SPACING as u16 * 2)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .style(container::rounded_box);
+
+        Container::new(
+            row![
+                container(form).width(Length::FillPortion(2)).max_width(600),
+                container(results).width(Length::FillPortion(3)),
             ]
-            .spacing(SPACING)
-        ])
-        .max_width(600)
+            .spacing(SPACING * 2),
+        )
+        .width(Length::Fill)
+        .height(Length::Fill)
         .into()
     }
 }
 
 fn get_state_view(state: &PollState) -> Element<'static, Message, Theme, Renderer> {
     if state.phase.is_none() {
-        Text::new("No Poll active.").into()
+        crate::empty_panel("📊", "No poll running yet")
     } else if state.phase == Some(PollPhase::Active) {
         column![
             Text::new("Voting active, currently at:"),

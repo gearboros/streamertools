@@ -1,11 +1,11 @@
 use crate::twitch_api::{
-    cancel_prediction, create_prediction, end_prediction, lock_prediction,
-    CreatePredictionRequest, CreatePredictionResponseData, EndPredictionRequest, PollChoice, PredictionStatus,
+    CreatePredictionRequest, CreatePredictionResponseData, EndPredictionRequest, PollChoice,
+    PredictionStatus, cancel_prediction, create_prediction, end_prediction, lock_prediction,
 };
-use crate::{load_config, prediction, save_config, App, AppPhase, Message, SPACING};
+use crate::{App, AppPhase, Message, SPACING, load_config, prediction, save_config};
 use iced::widget::{
-    button, column, pick_list, row, rule, text_input, Button, Column, Container, PickList, Text,
-    TextInput,
+    Button, Column, Container, PickList, Text, TextInput, button, column, container, pick_list,
+    row, rule, text_input,
 };
 use iced::{Center, Element, Length, Renderer, Task, Theme};
 use iced_aw::number_input;
@@ -51,7 +51,7 @@ pub enum PredictionMessage {
 
 fn get_state_view(state: &PredictionState) -> Element<'static, Message, Theme, Renderer> {
     if state.phase.is_none() {
-        Text::new("No Prediction active.").into()
+        crate::empty_panel("🎲", "No prediction running yet")
     } else if state.phase == Some(PredictionStatus::Active) {
         column![
             Text::new("Voting active, currently at:"),
@@ -394,21 +394,33 @@ impl App {
 
         let status_display = get_state_view(&state);
 
-        Container::new(row![
-            column![
-                save_row,
-                title_input,
-                opt_col,
-                option_btn_row,
-                rule::horizontal(2),
-                duration_row,
-                rule::horizontal(2),
-                btn_row,
-                status_display
+        let form = column![
+            save_row,
+            title_input,
+            opt_col,
+            option_btn_row,
+            rule::horizontal(2),
+            duration_row,
+            rule::horizontal(2),
+            btn_row,
+        ]
+        .spacing(SPACING);
+
+        let results = container(status_display)
+            .padding(SPACING as u16 * 2)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .style(container::rounded_box);
+
+        Container::new(
+            row![
+                container(form).width(Length::FillPortion(2)).max_width(600),
+                container(results).width(Length::FillPortion(3)),
             ]
-            .spacing(SPACING)
-        ])
-        .max_width(600)
+            .spacing(SPACING * 2),
+        )
+        .width(Length::Fill)
+        .height(Length::Fill)
         .into()
     }
 }
