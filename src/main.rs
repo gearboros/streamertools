@@ -5,13 +5,15 @@ mod prediction;
 mod auth;
 
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
-use iced::widget::{button, center, column, container, row, stack, text, Container, Space, Text};
+use iced::widget::{button, center, column, container, row, stack, text, Container, Text};
 use iced::{time, Color, Element, Length, Renderer, Subscription, Task, Theme};
 use iced::alignment::Vertical;
 use crate::twitch_auth::*;
-use tracing::info;
+use tracing::{error, info};
+use tracing_appender::rolling::Rotation;
+use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 use iced_aw::{TabBar, TabLabel};
 use directories::ProjectDirs;
 use iced::widget::space::horizontal;
@@ -62,7 +64,7 @@ struct App {
     broadcaster_id: Option<String>,
     access_token: Option<String>,
     refresh_token: Option<String>,
-    loading: bool,
+    _loading: bool,
     auth_status: String,
     // Device code flow UI state
     device_code_info: Option<DeviceCodeInfo>,
@@ -153,7 +155,7 @@ impl App {
                         self.prediction_state.current_state = Some(r);
                     }
                     Err(err) => {
-                        eprintln!("{:?}", err);
+                        error!("{:?}", err);
                         self.phase = AppPhase::NoPolling;
                     }
                 }
@@ -181,7 +183,7 @@ impl App {
                         self.poll_state.current_state = Some(r);
                     }
                     Err(err) => {
-                        eprintln!("{:?}", err);
+                        error!("{:?}", err);
                         self.phase = AppPhase::NoPolling;
                     }
                 }
@@ -286,12 +288,35 @@ fn subscription(app: &App) -> Subscription<Message> {
 }
 
 fn main() -> iced::Result {
-    // Initialize logging
-    tracing_subscriber::fmt::init();
+    // create all config dirs
+    let proj = ProjectDirs::from("dev", "gearboros", "streamertools").unwrap();
+    let config_path = proj.config_dir().to_path_buf();
+    fs::create_dir_all(config_path.clone()).expect("Could not create config directory");
+    fs::create_dir_all(config_path.join("polls")).expect("Could not create polls directory");
+    fs::create_dir_all(config_path.join("predictions")).expect("Could not create predictions directory");
+    fs::create_dir_all(config_path.join("logs")).expect("Could not create log dir.");
+
+    let file_appender = tracing_appender::rolling::Builder::new()
+        .rotation(Rotation::DAILY)
+        .filename_prefix("streamertools")
+        .filename_suffix("log")
+        .max_log_files(10)
+        .build(config_path.join("logs"))
+        .expect("Could not initialize rolling file appender");
+    let (file_writer, _guard) = tracing_appender::non_blocking(file_appender);
+
+    // Honor RUST_LOG if set, otherwise default to info.
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+
+    tracing_subscriber::registry()
+        .with(filter)
+        .with(fmt::layer().with_writer(std::io::stdout))
+        .with(fmt::layer().with_ansi(false).with_writer(file_writer))
+        .init();
 
     info!("Starting Streamer Tools");
 
-    iced::application(App::new, App::update, App::view)
+    iced::application(move || App::new(&config_path), App::update, App::view)
         .title("Streamer Tools")
         .font(iced_aw::ICED_AW_FONT_BYTES)
         .subscription(subscription)
@@ -299,15 +324,9 @@ fn main() -> iced::Result {
 }
 
 impl App {
-    fn new() -> (Self, Task<Message>) {
-        let proj = ProjectDirs::from("dev", "gearboros", "streamertools").unwrap();
-        let config_path = proj.config_dir().to_path_buf();
-        fs::create_dir_all(config_path.clone()).unwrap();
-        fs::create_dir_all(config_path.join("polls")).unwrap();
-        fs::create_dir_all(config_path.join("predictions")).unwrap();
-
-        let polls = Self::load_files(proj.config_dir().join("polls"));
-        let preds = Self::load_files(proj.config_dir().join("predictions"));
+    fn new(path: &Path) -> (Self, Task<Message>) {
+        let polls = Self::load_files(path.join("polls"));
+        let preds = Self::load_files(path.join("predictions"));
 
         let poll_state = PollState {
             options: vec![String::new(), String::new()],
@@ -320,8 +339,9 @@ impl App {
             duration: 10,
             ..Default::default()
         };
+        let config_path = path.to_path_buf();
         if let Some((access, refresh)) = load_tokens(&config_path) {
-            info!("Loaded tokens from keyring, validating...");
+            info!("Loaded tokens, validating...");
             let app = Self {
                 access_token: Some(access.clone()),
                 refresh_token: Some(refresh.clone()),
@@ -333,8 +353,6 @@ impl App {
                 predictions: preds,
                 ..Default::default()
             };
-            info!("App state: {:?}", app.access_token);
-            info!("App state: {:?}", app.refresh_token);
             let task = Task::done(Message::Auth(AuthMessage::ValidateToken));
             return (app, task);
         }

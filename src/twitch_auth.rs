@@ -1,7 +1,7 @@
 use keyring::Entry;
 use serde::{Deserialize, Serialize};
-use tracing::{info, warn};
-use std::path::PathBuf;
+use tracing::{error, info, warn};
+use std::path::{Path, PathBuf};
 use std::fs;
 use crate::CLIENT_ID;
 
@@ -46,6 +46,7 @@ pub async fn request_device_code() -> Result<DeviceCodeResponse, String> {
 
     if !resp.status().is_success() {
         let err_text = resp.text().await.unwrap_or_default();
+        error!("Error: {}", err_text);
         return Err(format!("Device code request failed: {}", err_text));
     }
 
@@ -94,6 +95,7 @@ pub async fn poll_for_tokens(
             // User hasn't authorized yet, continue polling
             continue;
         } else {
+            error!("Error: {}", error.message);
             return Err(format!("Authorization failed: {}", error.message));
         }
     }
@@ -137,7 +139,6 @@ pub fn save_tokens(access: &str, refresh: &str) -> Result<(), String> {
 }
 
 fn save_tokens_to_keyring(access: &str, refresh: &str) -> Result<(), String> {
-    return Err(String::from("t"));
     Entry::new("streamertools", "access_token")
         .map_err(|e| e.to_string())?
         .set_password(access)
@@ -169,8 +170,6 @@ pub fn save_tokens_to_file(access: &str, refresh: &str, path: &PathBuf) -> Resul
 
 /// loads token from OS provided keyring, tries to load from file if that fails.
 pub fn load_tokens(path: &PathBuf) -> Option<(String, String)> {
-    info!("Loading tokens...");
-
     // Try keyring first
     if let Some(tokens) = load_tokens_from_keyring() {
         info!("Tokens loaded from keyring");
@@ -179,6 +178,7 @@ pub fn load_tokens(path: &PathBuf) -> Option<(String, String)> {
 
     // Fall back to file storage
     if let Some(tokens) = load_tokens_from_file(path) {
+        info!("Tokens loaded from file");
         return Some(tokens);
     }
 

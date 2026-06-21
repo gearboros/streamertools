@@ -1,6 +1,7 @@
 use iced::wgpu::PollStatus;
 use reqwest::{RequestBuilder, Response};
 use serde::{Deserialize, Serialize};
+use tracing::error;
 use crate::CLIENT_ID;
 
 #[derive(Deserialize, Debug, Clone, Eq, PartialEq)]
@@ -54,10 +55,14 @@ pub async fn create_poll(
 
     if !resp.status().is_success() {
         let err_text = resp.text().await.unwrap_or_default();
+        error!("Request: {:?}, error: {}", request, err_text);
         return Err(format!("Create poll failed: {}", err_text));
     }
 
-    let parsed: PollStateResponse = resp.json::<PollStateResponse>().await.map_err(|e| e.to_string())?;
+    let parsed: PollStateResponse = resp.json::<PollStateResponse>().await.map_err(|e| {
+        error!("Parse error: {}", e);
+        e.to_string()
+    })?;
     Ok(parsed.data.first().unwrap().clone())
 }
 
@@ -69,6 +74,7 @@ pub async fn end_poll(broadcaster_id: &str, poll_id: &str, access_token: &str) -
 
     if !resp.status().is_success() {
         let err_text = resp.text().await.unwrap_or_default();
+        error!("Error: {}", err_text);
         return Err(format!("Ending poll failed: {}", err_text));
     }
 
@@ -135,6 +141,7 @@ pub async fn create_prediction(
 
     if !resp.status().is_success() {
         let err_text = resp.text().await.unwrap_or_default();
+        error!("Request: {:?}, error: {}", request, err_text);
         return Err(format!("Create prediction failed: {}", err_text));
     }
     // log before returning
@@ -144,7 +151,10 @@ pub async fn create_prediction(
     //     from_slice(&bytes).map_err(|e| e.to_string())?;
     // Ok(parsed.data.first().unwrap().clone())
 
-    let parsed: CreatePredictionResponse = resp.json::<CreatePredictionResponse>().await.map_err(|e| e.to_string())?;
+    let parsed: CreatePredictionResponse = resp.json::<CreatePredictionResponse>().await.map_err(|e| {
+        error!("Parse error: {}", e);
+        e.to_string()
+    })?;
     Ok(parsed.data.first().unwrap().clone())
 }
 
@@ -179,6 +189,7 @@ async fn set_prediction_state(request: EndPredictionRequest, access_token: &str,
 
     if !resp.status().is_success() {
         let err_text = resp.text().await.unwrap_or_default();
+        error!("Request: {:?}, error: {}", request, err_text);
         return Err(format!("Ending prediction failed: {}", err_text));
     }
 
@@ -193,10 +204,14 @@ pub async fn check_prediction(broadcaster_id: &str, prediction_id: &str, access_
 
     if !resp.status().is_success() {
         let err_text = resp.text().await.unwrap_or_default();
+        error!("Error: {}", err_text);
         return Err(format!("Checking prediction failed: {}", err_text));
     }
 
-    let parsed: CreatePredictionResponse = resp.json::<CreatePredictionResponse>().await.map_err(|e| e.to_string())?;
+    let parsed: CreatePredictionResponse = resp.json::<CreatePredictionResponse>().await.map_err(|e| {
+        error!("Parse error: {}", e);
+        e.to_string()
+    })?;
     Ok(parsed.data.first().unwrap().clone())
 }
 
@@ -246,10 +261,14 @@ pub async fn check_poll(broadcaster_id: &str, poll_id: &str, access_token: &str)
 
     if !resp.status().is_success() {
         let err_text = resp.text().await.unwrap_or_default();
+        error!("Error: {}", err_text);
         return Err(format!("Checking poll failed: {}", err_text));
     }
 
-    let parsed: PollStateResponse = resp.json::<PollStateResponse>().await.map_err(|e| e.to_string())?;
+    let parsed: PollStateResponse = resp.json::<PollStateResponse>().await.map_err(|e| {
+        error!("Parse error: {}", e);
+        e.to_string()
+    })?;
     Ok(parsed.data.first().unwrap().clone())
 }
 
