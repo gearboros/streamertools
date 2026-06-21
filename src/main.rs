@@ -8,9 +8,10 @@ use crate::twitch_auth::*;
 use auth::AuthMessage;
 use directories::ProjectDirs;
 use iced::alignment::Vertical;
+use iced::widget::operation::{focus_next, focus_previous};
 use iced::widget::space::horizontal;
 use iced::widget::{button, center, column, container, row, stack, text, Container, Text};
-use iced::{time, Color, Element, Length, Renderer, Subscription, Task, Theme};
+use iced::{keyboard, time, Color, Element, Length, Renderer, Subscription, Task, Theme};
 use iced_aw::{TabBar, TabLabel};
 use poll::{PollMessage, PollState};
 use prediction::{PredictionMessage, PredictionState};
@@ -108,6 +109,7 @@ enum Message {
     PredictionPolled(Result<CreatePredictionResponseData, String>),
     PollTick,
     PollPolled(Result<PollStateData, String>),
+    Keyboard(keyboard::Event),
 }
 
 const SPACING: u32 = 10;
@@ -194,6 +196,20 @@ impl App {
                 }
                 Task::none()
             }
+            Message::Keyboard(event) => match event {
+                keyboard::Event::KeyPressed {
+                    key: keyboard::Key::Named(keyboard::key::Named::Tab),
+                    modifiers,
+                    ..
+                } => {
+                    if modifiers.shift() {
+                        focus_previous()
+                    } else {
+                        focus_next()
+                    }
+                }
+                _ => Task::none(),
+            },
         }
     }
 
@@ -294,13 +310,16 @@ impl App {
 }
 
 fn subscription(app: &App) -> Subscription<Message> {
-    match app.phase {
+    let keys = keyboard::listen().map(Message::Keyboard);
+
+    let polling = match app.phase {
         AppPhase::PredictionPolling => {
             time::every(Duration::from_secs(1)).map(|_| Message::PredictionTick)
         }
         AppPhase::PollPolling => time::every(Duration::from_secs(1)).map(|_| Message::PollTick),
         AppPhase::NoPolling => Subscription::none(),
-    }
+    };
+    Subscription::batch([keys, polling])
 }
 
 fn main() -> iced::Result {
