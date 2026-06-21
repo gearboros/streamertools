@@ -61,7 +61,7 @@ pub async fn request_device_code(client: &reqwest::Client) -> Result<DeviceCodeR
 pub async fn poll_for_tokens(
     client: &reqwest::Client,
     device_code: &str,
-    interval: u64,
+    mut interval: u64,
     expires_in: u64,
 ) -> Result<(String, String), String> {
     let start = std::time::Instant::now();
@@ -90,15 +90,29 @@ pub async fn poll_for_tokens(
             return Ok((tokens.access_token, tokens.refresh_token));
         }
 
-        // Check if still pending or actual error
-        let error: DeviceTokenError = resp.json().await.map_err(|e| e.to_string())?;
+        let body = resp.text().await.unwrap_or_default();
+        let message = serde_json::from_str::<DeviceTokenError>(&body)
+            .map(|e| e.message)
+            .unwrap_or_default();
 
-        if error.message == "authorization_pending" {
-            // User hasn't authorized yet, continue polling
-            continue;
-        } else {
-            error!("Error: {}", error.message);
-            return Err(format!("Authorization failed: {}", error.message));
+        match message.as_str() {
+            // User hasn't authorized yet, keep polling.
+            "authorization_pending" => continue,
+            // Polling too fast: back off by 5s (RFC 8628) and keep polling.
+            "slow_down" => {
+                interval += 5;
+                continue;
+            }
+            // Unrecognized or unparseable body: treat as transient and keep
+            // polling until the device code expires (bounded by the timeout check above).
+            "" => {
+                error!("Unexpected token poll response: {}", body);
+                continue;
+            }
+            _ => {
+                error!("Error: {}", message);
+                return Err(format!("Authorization failed: {}", message));
+            }
         }
     }
 }
