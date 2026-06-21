@@ -1,9 +1,9 @@
+use crate::CLIENT_ID;
 use keyring::Entry;
 use serde::{Deserialize, Serialize};
-use tracing::{error, info, warn};
-use std::path::{Path, PathBuf};
 use std::fs;
-use crate::CLIENT_ID;
+use std::path::{Path, PathBuf};
+use tracing::{error, info, warn};
 
 #[derive(Serialize, Deserialize)]
 struct StoredTokens {
@@ -37,7 +37,10 @@ pub async fn request_device_code(client: &reqwest::Client) -> Result<DeviceCodeR
         .post("https://id.twitch.tv/oauth2/device")
         .form(&[
             ("client_id", CLIENT_ID),
-            ("scopes", "user:read:email channel:manage:polls channel:manage:predictions"),
+            (
+                "scopes",
+                "user:read:email channel:manage:polls channel:manage:predictions",
+            ),
         ])
         .send()
         .await
@@ -101,8 +104,12 @@ pub async fn poll_for_tokens(
 }
 
 /// Access tokens are short-lived, need refreshing regularly
-pub async fn refresh_access_token(client: &reqwest::Client, refresh_token: &str) -> Result<(String, String), String> {
-    let resp = client.post("https://id.twitch.tv/oauth2/token")
+pub async fn refresh_access_token(
+    client: &reqwest::Client,
+    refresh_token: &str,
+) -> Result<(String, String), String> {
+    let resp = client
+        .post("https://id.twitch.tv/oauth2/token")
         .form(&[
             ("client_id", CLIENT_ID),
             ("refresh_token", refresh_token),
@@ -130,9 +137,7 @@ pub fn save_tokens(access: &str, refresh: &str) -> Result<(), String> {
             info!("Tokens saved to keyring");
             Ok(())
         }
-        Err(_e) => {
-            Err("Could not save tokens to keyring".to_string())
-        }
+        Err(_e) => Err("Could not save tokens to keyring".to_string()),
     }
 }
 
@@ -159,7 +164,8 @@ pub fn save_tokens_to_file(access: &str, refresh: &str, path: &PathBuf) -> Resul
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(&file_path, fs::Permissions::from_mode(0o600)).map_err(|e| e.to_string())?;
+        fs::set_permissions(&file_path, fs::Permissions::from_mode(0o600))
+            .map_err(|e| e.to_string())?;
     }
 
     info!("Tokens saved to file: {:?}", path);
@@ -185,8 +191,14 @@ pub fn load_tokens(path: &PathBuf) -> Option<(String, String)> {
 }
 
 fn load_tokens_from_keyring() -> Option<(String, String)> {
-    let access = Entry::new("streamertools", "access_token").ok()?.get_password().ok()?;
-    let refresh = Entry::new("streamertools", "refresh_token").ok()?.get_password().ok()?;
+    let access = Entry::new("streamertools", "access_token")
+        .ok()?
+        .get_password()
+        .ok()?;
+    let refresh = Entry::new("streamertools", "refresh_token")
+        .ok()?
+        .get_password()
+        .ok()?;
     Some((access, refresh))
 }
 

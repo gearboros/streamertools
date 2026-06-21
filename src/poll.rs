@@ -1,11 +1,16 @@
-use std::fs;
+use crate::poll::PollMessage::DurationChange;
+use crate::twitch_api::{
+    CreatePollRequest, PollChoice, PollPhase, PollStateData, create_poll, end_poll,
+};
+use crate::{App, AppPhase, Message, SPACING};
+use iced::widget::{
+    Button, Checkbox, Column, Container, PickList, Text, TextInput, button, checkbox, column,
+    pick_list, row, rule, text_input,
+};
 use iced::{Center, Element, Length, Renderer, Task, Theme};
-use iced::widget::{button, checkbox, pick_list, row, text_input, column, Button, Checkbox, Column, Container, PickList, Text, TextInput, rule};
 use iced_aw::number_input;
 use serde::{Deserialize, Serialize};
-use crate::{App, AppPhase, Message, SPACING};
-use crate::poll::PollMessage::DurationChange;
-use crate::twitch_api::{create_poll, end_poll, CreatePollRequest, PollChoice, PollPhase, PollStateData};
+use std::fs;
 
 impl App {
     pub fn handle_poll(&mut self, poll_message: PollMessage) -> Task<Message> {
@@ -21,11 +26,13 @@ impl App {
                 let request = CreatePollRequest {
                     broadcaster_id: self.broadcaster_id.clone().unwrap_or_default(),
                     title: self.poll_state.title.clone(),
-                    choices: self.poll_state.options.clone().iter().map(|o| {
-                        PollChoice {
-                            title: o.clone()
-                        }
-                    }).collect(),
+                    choices: self
+                        .poll_state
+                        .options
+                        .clone()
+                        .iter()
+                        .map(|o| PollChoice { title: o.clone() })
+                        .collect(),
                     duration: self.poll_state.duration * 60,
                     channel_points_voting_enabled: self.poll_state.uses_channel_points,
                     channel_points_per_vote: self.poll_state.channel_point_cost,
@@ -35,7 +42,6 @@ impl App {
                     async move { create_poll(&client, &token, request).await },
                     |r| Message::Poll(PollCreated(r)),
                 )
-
             }
             OptionChanged(idx, val) => {
                 if let Some(o) = self.poll_state.options.get_mut(idx) {
@@ -53,18 +59,14 @@ impl App {
                 }
                 Task::none()
             }
-            PollCreated(r) => {
-                match r {
-                    Ok(resp) => {
-                        self.phase = AppPhase::PollPolling;
-                        self.poll_state.current_state = Some(resp);
-                        Task::none()
-                    }
-                    Err(e) => {
-                        Task::done(Message::Error(e.to_string()))
-                    }
+            PollCreated(r) => match r {
+                Ok(resp) => {
+                    self.phase = AppPhase::PollPolling;
+                    self.poll_state.current_state = Some(resp);
+                    Task::none()
                 }
-            }
+                Err(e) => Task::done(Message::Error(e.to_string())),
+            },
             DurationChange(d) => {
                 self.poll_state.duration = d;
                 Task::none()
@@ -84,7 +86,7 @@ impl App {
                 let client = self.client.clone();
                 Task::perform(
                     async move { end_poll(&client, &broadcaster, &poll_id, &token).await },
-                    |_| Message::Poll(PollEnded)
+                    |_| Message::Poll(PollEnded),
                 )
             }
             PollEnded => {
@@ -94,7 +96,10 @@ impl App {
             SaveConfig => {
                 let json = serde_json::to_string(&self.poll_state).unwrap();
                 let poll = self.poll_state.name.clone();
-                let path = self.config_path.join("polls").join(format!("{}.json", poll));
+                let path = self
+                    .config_path
+                    .join("polls")
+                    .join(format!("{}.json", poll));
                 fs::write(&path, json).unwrap();
                 let polls = Self::load_files(self.config_path.join("polls"));
                 self.polls = polls;
@@ -106,13 +111,14 @@ impl App {
                 self.selected_poll = Some(c.clone());
                 let selection = &self.selected_poll;
                 if let Some(poll) = selection {
-                    let path = &self.config_path.join("polls").join(format!("{}.json", poll));
-                    let config: Option<PollState> = fs::read_to_string(path)
-                        .ok()
-                        .and_then(|t| {
-                            let result = serde_json::from_str(&t);
-                            result.ok()
-                        });
+                    let path = &self
+                        .config_path
+                        .join("polls")
+                        .join(format!("{}.json", poll));
+                    let config: Option<PollState> = fs::read_to_string(path).ok().and_then(|t| {
+                        let result = serde_json::from_str(&t);
+                        result.ok()
+                    });
                     if let Some(state) = config {
                         self.poll_state = state;
                         self.poll_loaded = true;
@@ -133,16 +139,17 @@ impl App {
     }
 
     pub(crate) fn get_poll_tab_content(&self) -> Element<'static, Message, Theme, Renderer> {
-        let dropdown: PickList<'_, String, Vec<String>, String, Message> = pick_list(self.polls.clone(), self.selected_poll.clone(), |t| Message::Poll(PollMessage::ConfigSelected(t)));
+        let dropdown: PickList<'_, String, Vec<String>, String, Message> =
+            pick_list(self.polls.clone(), self.selected_poll.clone(), |t| {
+                Message::Poll(PollMessage::ConfigSelected(t))
+            });
         let state = self.poll_state.clone();
         let mut name_input: TextInput<_> = text_input("Config Name", &state.name);
         if !self.poll_loaded {
             name_input = name_input.on_input(|n| Message::Poll(PollMessage::NameChanged(n)));
         }
-        let new_btn: Button<_> = button("New")
-            .on_press(Message::Poll(PollMessage::NewConfig));
-        let save_btn: Button<_> = button("Save")
-            .on_press(Message::Poll(PollMessage::SaveConfig));
+        let new_btn: Button<_> = button("New").on_press(Message::Poll(PollMessage::NewConfig));
+        let save_btn: Button<_> = button("Save").on_press(Message::Poll(PollMessage::SaveConfig));
 
         let save_row = row![dropdown, name_input, new_btn, save_btn].spacing(SPACING);
 
@@ -163,20 +170,26 @@ impl App {
         let option_btn_row = row![add_btn].spacing(SPACING);
 
         let duration_text = Text::new("Duration in mins: ");
-        let mut duration_inp = number_input(&state.duration, 1..=30, |d| Message::Poll(DurationChange(d)));
+        let mut duration_inp = number_input(&state.duration, 1..=30, |d| {
+            Message::Poll(DurationChange(d))
+        });
         if state.current_state.is_some() {
             duration_inp = duration_inp.on_input_maybe(None::<fn(usize) -> Message>)
         }
 
         let duration_row = row![duration_text, duration_inp].align_y(Center);
 
-        let channel_point_check: Checkbox<_> = checkbox(state.uses_channel_points).label("Enable Channel point votes.")
+        let channel_point_check: Checkbox<_> = checkbox(state.uses_channel_points)
+            .label("Enable Channel point votes.")
             .on_toggle(|t| Message::Poll(PollMessage::ChannelPointsToggled(t)));
         let channel_point_text: Text<_> = Text::new("Channel point cost: ");
-        let channel_point_input = number_input(&state.channel_point_cost, 0..=1_000_000, |c| Message::Poll(PollMessage::PointCostChange(c)));
+        let channel_point_input = number_input(&state.channel_point_cost, 0..=1_000_000, |c| {
+            Message::Poll(PollMessage::PointCostChange(c))
+        });
         let mut channel_row = iced::widget::column![channel_point_check];
         if state.uses_channel_points {
-            channel_row = channel_row.push(row![channel_point_text, channel_point_input].align_y(Center))
+            channel_row =
+                channel_row.push(row![channel_point_text, channel_point_input].align_y(Center))
         }
 
         let submit_btn = button("Submit").on_press(Message::Poll(PollMessage::Submit));
@@ -188,21 +201,45 @@ impl App {
 
         let status_display = get_state_view(&state);
 
-        Container::new(row![column![save_row, title_input, opt_col, option_btn_row, rule::horizontal(2), duration_row, rule::horizontal(2), channel_row, rule::horizontal(2), btns, status_display].spacing(SPACING)])
-            .max_width(600).into()
+        Container::new(row![
+            column![
+                save_row,
+                title_input,
+                opt_col,
+                option_btn_row,
+                rule::horizontal(2),
+                duration_row,
+                rule::horizontal(2),
+                channel_row,
+                rule::horizontal(2),
+                btns,
+                status_display
+            ]
+            .spacing(SPACING)
+        ])
+        .max_width(600)
+        .into()
     }
-
 }
 
 fn get_state_view(state: &PollState) -> Element<'static, Message, Theme, Renderer> {
     if state.phase.is_none() {
         Text::new("No Poll active.").into()
     } else if state.phase == Some(PollPhase::Active) {
-        column![Text::new("Voting active, currently at:"), get_votes_result(&state.current_state)]
-            .spacing(SPACING).into()
-    } else if state.phase == Some(PollPhase::Completed) || state.phase == Some(PollPhase::Archived) {
-        column![Text::new("Voting closed, Result:"), get_votes_result(&state.current_state)]
-            .spacing(SPACING).into()
+        column![
+            Text::new("Voting active, currently at:"),
+            get_votes_result(&state.current_state)
+        ]
+        .spacing(SPACING)
+        .into()
+    } else if state.phase == Some(PollPhase::Completed) || state.phase == Some(PollPhase::Archived)
+    {
+        column![
+            Text::new("Voting closed, Result:"),
+            get_votes_result(&state.current_state)
+        ]
+        .spacing(SPACING)
+        .into()
     } else {
         Text::new("").into()
     }
@@ -214,7 +251,11 @@ fn get_votes_result(state: &Option<PollStateData>) -> Element<'static, Message, 
     };
     let total_votes = state.choices.iter().map(|c| c.votes).sum::<i32>();
     let total_popular_votes = state.choices.iter().map(|c| c.popular_votes()).sum::<i32>();
-    let total_point_votes = state.choices.iter().map(|c| c.channel_point_votes).sum::<i32>();
+    let total_point_votes = state
+        .choices
+        .iter()
+        .map(|c| c.channel_point_votes)
+        .sum::<i32>();
 
     let winner_text = get_winner_text(&state);
 
@@ -223,38 +264,84 @@ fn get_votes_result(state: &Option<PollStateData>) -> Element<'static, Message, 
 
     let mut col: Column<_> = column![
         Text::new(winner_text),
-        Text::new(format!("Total: {} votes, {} user votes, {} point votes", total_votes, total_popular_votes, total_point_votes)),
-    ].spacing(SPACING);
+        Text::new(format!(
+            "Total: {} votes, {} user votes, {} point votes",
+            total_votes, total_popular_votes, total_point_votes
+        )),
+    ]
+    .spacing(SPACING);
     for o in &by_votes {
-        let vote_percent = if total_votes == 0 { 0f64 } else { (o.votes as f64) / (total_votes as f64) * 100.0 };
-        let pop_vote_percent = if total_popular_votes == 0 { 0f64 } else { (o.popular_votes() as f64) / (total_popular_votes as f64) * 100.0 };
-        let point_vote_percent = if total_point_votes == 0 { 0f64 } else { (o.channel_point_votes as f64) / (total_point_votes as f64) * 100.0 };
-        col = col.push(row![
-            Text::new(o.title.clone()).width(Length::FillPortion(2)),
-            Text::new(format!("{:.2}% of votes", vote_percent)).width(Length::FillPortion(2)),
-            Text::new(format!("{:.2}% of user votes", pop_vote_percent)).width(Length::FillPortion(2)),
-            Text::new(format!("{:.2}% of point votes", point_vote_percent)).width(Length::FillPortion(2)),
-        ].spacing(SPACING));
+        let vote_percent = if total_votes == 0 {
+            0f64
+        } else {
+            (o.votes as f64) / (total_votes as f64) * 100.0
+        };
+        let pop_vote_percent = if total_popular_votes == 0 {
+            0f64
+        } else {
+            (o.popular_votes() as f64) / (total_popular_votes as f64) * 100.0
+        };
+        let point_vote_percent = if total_point_votes == 0 {
+            0f64
+        } else {
+            (o.channel_point_votes as f64) / (total_point_votes as f64) * 100.0
+        };
+        col = col.push(
+            row![
+                Text::new(o.title.clone()).width(Length::FillPortion(2)),
+                Text::new(format!("{:.2}% of votes", vote_percent)).width(Length::FillPortion(2)),
+                Text::new(format!("{:.2}% of user votes", pop_vote_percent))
+                    .width(Length::FillPortion(2)),
+                Text::new(format!("{:.2}% of point votes", point_vote_percent))
+                    .width(Length::FillPortion(2)),
+            ]
+            .spacing(SPACING),
+        );
     }
     col.into()
 }
 
 fn get_winner_text(state: &PollStateData) -> String {
-    let winner = state.choices.iter().max_by_key(|c| c.votes);
-    let popular_winner = state.choices.iter().max_by_key(|c| c.popular_votes());
-    let point_winner = state.choices.iter().max_by_key(|c| c.channel_point_votes);
+    let winner = state
+        .choices
+        .iter()
+        .max_by_key(|c| c.votes)
+        .expect("No empty choices");
+    let popular_winner = state
+        .choices
+        .iter()
+        .max_by_key(|c| c.popular_votes())
+        .expect("No empty choices");
+    let point_winner = state
+        .choices
+        .iter()
+        .max_by_key(|c| c.channel_point_votes)
+        .expect("No empty choices");
 
-    if winner.unwrap().id == popular_winner.unwrap().id && winner.unwrap().id == point_winner.unwrap().id {
-        format!("{} is the winner, the popular vote winner and the points vote winner!", winner.unwrap().title)
-    } else if winner.unwrap().id == point_winner.unwrap().id || winner.unwrap().id == popular_winner.unwrap().id {
-        if winner.unwrap().id == point_winner.unwrap().id {
-            format!("{} is the winner and points vote winner, {} is the popular vote winner", winner.unwrap().title, popular_winner.unwrap().title)
-        } else { // if winner.unwrap().id == popular_winner.unwrap().id {
-            format!("{} is the winner and popular vote winner, {} is the points vote winner", winner.unwrap().title, point_winner.unwrap().title)
+    if winner.id == popular_winner.id && winner.id == point_winner.id {
+        format!(
+            "{} is the winner, the popular vote winner and the points vote winner!",
+            winner.title
+        )
+    } else if winner.id == point_winner.id || winner.id == popular_winner.id {
+        if winner.id == point_winner.id {
+            format!(
+                "{} is the winner and points vote winner, {} is the popular vote winner",
+                winner.title, popular_winner.title
+            )
+        } else {
+            // if winner.id == popular_winner.id {
+            format!(
+                "{} is the winner and popular vote winner, {} is the points vote winner",
+                winner.title, point_winner.title
+            )
         }
     } else {
-        // popular vote = point winner but != winner should be impossible ... right?
-        format!("{} is the winner, {} the popular vote winner and {} is the points vote winner", winner.unwrap().title, popular_winner.unwrap().title, point_winner.unwrap().title)
+        // not checking for popular winner == point winner but != winner, because it's impossible
+        format!(
+            "{} is the winner, {} the popular vote winner and {} is the points vote winner",
+            winner.title, popular_winner.title, point_winner.title
+        )
     }
 }
 
@@ -270,7 +357,7 @@ pub struct PollState {
     pub phase: Option<PollPhase>,
     #[serde(skip_serializing, skip_deserializing)]
     pub current_state: Option<PollStateData>,
-    pub name: String
+    pub name: String,
 }
 
 #[derive(Debug, Clone)]

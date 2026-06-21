@@ -1,14 +1,20 @@
+use crate::twitch_auth::{
+    poll_for_tokens, refresh_access_token, request_device_code, save_tokens, save_tokens_to_file,
+    validate_token,
+};
+use crate::{App, DeviceCodeInfo, Message};
 use iced::Task;
 use tracing::info;
-use crate::{App, DeviceCodeInfo, Message};
-use crate::twitch_auth::{poll_for_tokens, refresh_access_token, request_device_code, save_tokens, save_tokens_to_file, validate_token};
-
 
 #[derive(Debug, Clone)]
 pub enum AuthMessage {
     StartAuth,
     DeviceCodeReceived(Result<DeviceCodeInfo, String>),
-    PollForTokens { device_code: String, interval: u64, expires_in: u64 },
+    PollForTokens {
+        device_code: String,
+        interval: u64,
+        expires_in: u64,
+    },
     AuthCompleted(Result<(String, String), String>),
     ConfirmFallback,
     FallbackConfirmed(bool),
@@ -59,7 +65,11 @@ impl App {
                         self.device_code_info = Some(info);
 
                         // Start polling for tokens
-                        Task::done(Message::Auth(PollForTokens { device_code, interval, expires_in }))
+                        Task::done(Message::Auth(PollForTokens {
+                            device_code,
+                            interval,
+                            expires_in,
+                        }))
                     }
                     Err(e) => {
                         self.auth_status = format!("Error: {}", e);
@@ -68,12 +78,14 @@ impl App {
                     }
                 }
             }
-            PollForTokens { device_code, interval, expires_in } => {
+            PollForTokens {
+                device_code,
+                interval,
+                expires_in,
+            } => {
                 let client = self.client.clone();
                 Task::perform(
-                    async move {
-                        poll_for_tokens(&client, &device_code, interval, expires_in).await
-                    },
+                    async move { poll_for_tokens(&client, &device_code, interval, expires_in).await },
                     |result| Message::Auth(AuthCompleted(result)),
                 )
             }
@@ -87,12 +99,8 @@ impl App {
                         self.refresh_token = Some(refresh_token);
                         self.auth_status = "Authenticated".to_string();
                         match resp {
-                            Ok(_) => {
-                                Task::done(Message::Auth(ValidateToken))
-                            }
-                            Err(_) => {
-                                Task::done(Message::Auth(ConfirmFallback))
-                            }
+                            Ok(_) => Task::done(Message::Auth(ValidateToken)),
+                            Err(_) => Task::done(Message::Auth(ConfirmFallback)),
                         }
                     }
                     Err(e) => {
@@ -105,7 +113,9 @@ impl App {
                 if let Some(token) = &self.access_token {
                     let t = token.clone();
                     let client = self.client.clone();
-                    Task::perform(async move { validate_token(&client, &t).await }, |result| Message::Auth(TokenValidated(result)))
+                    Task::perform(async move { validate_token(&client, &t).await }, |result| {
+                        Message::Auth(TokenValidated(result))
+                    })
                 } else {
                     Task::none()
                 }
@@ -131,23 +141,31 @@ impl App {
                 if let Some(refresh) = &self.refresh_token {
                     let t = refresh.clone();
                     let client = self.client.clone();
-                    Task::perform(async move { refresh_access_token(&client, &t).await }, |result| Message::Auth(AuthCompleted(result)))
+                    Task::perform(
+                        async move { refresh_access_token(&client, &t).await },
+                        |result| Message::Auth(AuthCompleted(result)),
+                    )
                 } else {
                     Task::none()
                 }
             }
             ConfirmFallback => {
-                self.confirm = Some(String::from("Could not save tokens to the Operating System's keystore.\nDo you want the tokens saved to a file?\nIf \"No\", you'll have to re-authenticate every time you restart the app."));
+                self.confirm = Some(String::from(
+                    "Could not save tokens to the Operating System's keystore.\nDo you want the tokens saved to a file?\nIf \"No\", you'll have to re-authenticate every time you restart the app.",
+                ));
                 Task::none()
             }
             FallbackConfirmed(confirmed) => {
                 self.confirm = None;
                 if confirmed {
-                    let _ = save_tokens_to_file(&self.access_token.clone().unwrap(), &self.refresh_token.clone().unwrap(), &self.config_path);
+                    let _ = save_tokens_to_file(
+                        &self.access_token.clone().unwrap(),
+                        &self.refresh_token.clone().unwrap(),
+                        &self.config_path,
+                    );
                 }
                 Task::none()
             }
         }
     }
-    
 }

@@ -1,25 +1,25 @@
-mod twitch_auth;
-mod twitch_api;
+mod auth;
 mod poll;
 mod prediction;
-mod auth;
+mod twitch_api;
+mod twitch_auth;
 
+use crate::twitch_auth::*;
+use auth::AuthMessage;
+use directories::ProjectDirs;
+use iced::alignment::Vertical;
+use iced::widget::space::horizontal;
+use iced::widget::{Container, Text, button, center, column, container, row, stack, text};
+use iced::{Color, Element, Length, Renderer, Subscription, Task, Theme, time};
+use iced_aw::{TabBar, TabLabel};
+use poll::{PollMessage, PollState};
+use prediction::{PredictionMessage, PredictionState};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
-use iced::widget::{button, center, column, container, row, stack, text, Container, Text};
-use iced::{time, Color, Element, Length, Renderer, Subscription, Task, Theme};
-use iced::alignment::Vertical;
-use crate::twitch_auth::*;
 use tracing::{error, info};
 use tracing_appender::rolling::Rotation;
-use tracing_subscriber::{fmt, prelude::*, EnvFilter};
-use iced_aw::{TabBar, TabLabel};
-use directories::ProjectDirs;
-use iced::widget::space::horizontal;
-use auth::AuthMessage;
-use poll::{PollMessage, PollState};
-use prediction::{PredictionMessage, PredictionState};
+use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 use twitch_api::*;
 
 pub const CLIENT_ID: &str = "9w729lqufngx4sztgex20eztz7o879";
@@ -35,9 +35,9 @@ enum TabId {
 impl TabId {
     pub fn idx(self) -> usize {
         match self {
-            TabId::Misc => { 2}
-            TabId::Poll => { 1 }
-            TabId::Prediction => { 0 }
+            TabId::Misc => 2,
+            TabId::Poll => 1,
+            TabId::Prediction => 0,
         }
     }
 
@@ -113,19 +113,13 @@ const SPACING: u32 = 10;
 impl App {
     fn update(&mut self, message: Message) -> Task<Message> {
         match message {
-            Message::Auth(auth_message) => {
-                self.handle_auth(auth_message)
-            }
+            Message::Auth(auth_message) => self.handle_auth(auth_message),
             Message::TabSelected(idx) => {
                 self.active_tab = TabId::from_idx(idx);
                 Task::none()
             }
-            Message::Prediction(pred_message) => {
-                self.handle_pred(pred_message)
-            }
-            Message::Poll(poll_message) => {
-                self.handle_poll(poll_message)
-            }
+            Message::Prediction(pred_message) => self.handle_pred(pred_message),
+            Message::Poll(poll_message) => self.handle_poll(poll_message),
             Message::Error(err) => {
                 self.err = err;
                 Task::none()
@@ -140,9 +134,12 @@ impl App {
                     let pred_id = self.prediction_state.current_state.clone().unwrap().id;
                     let token = self.access_token.clone().unwrap();
                     let client = self.client.clone();
-                    Task::perform(async move {
-                        check_prediction(&client, &broadcaster_id, &pred_id, &token).await },
-                                  |r| Message::PredictionPolled(r))
+                    Task::perform(
+                        async move {
+                            check_prediction(&client, &broadcaster_id, &pred_id, &token).await
+                        },
+                        |r| Message::PredictionPolled(r),
+                    )
                 } else {
                     Task::none()
                 }
@@ -151,7 +148,9 @@ impl App {
                 match resp {
                     Ok(r) => {
                         self.prediction_state.phase = Some(r.status.clone());
-                        if r.status == PredictionStatus::Canceled || r.status == PredictionStatus::Resolved {
+                        if r.status == PredictionStatus::Canceled
+                            || r.status == PredictionStatus::Resolved
+                        {
                             self.phase = AppPhase::NoPolling;
                         }
                         self.prediction_state.current_state = Some(r);
@@ -169,9 +168,10 @@ impl App {
                     let poll_id = self.poll_state.current_state.clone().unwrap().id.clone();
                     let token = self.access_token.clone().unwrap();
                     let client = self.client.clone();
-                    Task::perform(async move {
-                        check_poll(&client, &broadcaster_id, &poll_id, &token).await },
-                                  |r| Message::PollPolled(r))
+                    Task::perform(
+                        async move { check_poll(&client, &broadcaster_id, &poll_id, &token).await },
+                        |r| Message::PollPolled(r),
+                    )
                 } else {
                     Task::none()
                 }
@@ -211,7 +211,9 @@ impl App {
         };
 
         let mut content = column![].spacing(SPACING);
-        let auth = row![auth_btn, text(&self.auth_status)].align_y(Vertical::Center).spacing(SPACING);
+        let auth = row![auth_btn, text(&self.auth_status)]
+            .align_y(Vertical::Center)
+            .spacing(SPACING);
         content = content.push(auth);
 
         // Show device code info if available
@@ -219,10 +221,10 @@ impl App {
             content = content.push(
                 column![
                     text(format!("Visit: {}", info.verification_uri)),
-                    row![
-                        text(format!("Enter code: {}", info.user_code)).size(20),
-                    ].spacing(SPACING),
-                ].spacing(SPACING)
+                    row![text(format!("Enter code: {}", info.user_code)).size(20),]
+                        .spacing(SPACING),
+                ]
+                .spacing(SPACING),
             );
         }
 
@@ -239,11 +241,11 @@ impl App {
                     ]
                     .spacing(10)
                 ]
-                    .spacing(20),
+                .spacing(20),
             )
-                .width(600)
-                .padding(10)
-                .style(container::rounded_box);
+            .width(600)
+            .padding(10)
+            .style(container::rounded_box);
 
             modal(content.padding(20), error, Message::ClearError)
         } else if self.confirm.is_some() {
@@ -254,22 +256,28 @@ impl App {
                         text(self.confirm.clone().unwrap().clone()),
                         row![
                             horizontal(),
-                            button(text("No")).on_press(Message::Auth(AuthMessage::FallbackConfirmed(false))),
-                            button(text("Yes")).on_press(Message::Auth(AuthMessage::FallbackConfirmed(true))),
-                        ].spacing(SPACING)
+                            button(text("No"))
+                                .on_press(Message::Auth(AuthMessage::FallbackConfirmed(false))),
+                            button(text("Yes"))
+                                .on_press(Message::Auth(AuthMessage::FallbackConfirmed(true))),
+                        ]
+                        .spacing(SPACING)
                     ]
                     .spacing(10)
                 ]
-                    .spacing(20),
+                .spacing(20),
             )
-                .width(600)
-                .padding(10)
-                .style(container::rounded_box);
+            .width(600)
+            .padding(10)
+            .style(container::rounded_box);
 
-            modal(content.padding(20), confirm, Message::Auth(AuthMessage::FallbackConfirmed(false)))
+            modal(
+                content.padding(20),
+                confirm,
+                Message::Auth(AuthMessage::FallbackConfirmed(false)),
+            )
         } else {
-            container(content.padding(20))
-                .into()
+            container(content.padding(20)).into()
         }
     }
 
@@ -284,7 +292,9 @@ impl App {
 
 fn subscription(app: &App) -> Subscription<Message> {
     match app.phase {
-        AppPhase::PredictionPolling => time::every(Duration::from_secs(1)).map(|_| Message::PredictionTick),
+        AppPhase::PredictionPolling => {
+            time::every(Duration::from_secs(1)).map(|_| Message::PredictionTick)
+        }
         AppPhase::PollPolling => time::every(Duration::from_secs(1)).map(|_| Message::PollTick),
         AppPhase::NoPolling => Subscription::none(),
     }
@@ -296,7 +306,8 @@ fn main() -> iced::Result {
     let config_path = proj.config_dir().to_path_buf();
     fs::create_dir_all(config_path.clone()).expect("Could not create config directory");
     fs::create_dir_all(config_path.join("polls")).expect("Could not create polls directory");
-    fs::create_dir_all(config_path.join("predictions")).expect("Could not create predictions directory");
+    fs::create_dir_all(config_path.join("predictions"))
+        .expect("Could not create predictions directory");
     fs::create_dir_all(config_path.join("logs")).expect("Could not create log dir.");
 
     let file_appender = tracing_appender::rolling::Builder::new()
@@ -360,21 +371,33 @@ impl App {
             return (app, task);
         }
         info!("No tokens found in keyring");
-        (Self {
-            auth_status: "Not logged in".to_string(),
-            poll_state,
-            config_path,
-            polls,
-            prediction_state,
-            predictions: preds,
-            ..Default::default()
-        }, Task::none())
+        (
+            Self {
+                auth_status: "Not logged in".to_string(),
+                poll_state,
+                config_path,
+                polls,
+                prediction_state,
+                predictions: preds,
+                ..Default::default()
+            },
+            Task::none(),
+        )
     }
 
     fn load_files(path: PathBuf) -> Vec<String> {
-        fs::read_dir(path).unwrap().map(|r| {
-            r.unwrap().path().file_stem().unwrap().to_str().unwrap().to_string()
-        }).collect::<Vec<String>>()
+        fs::read_dir(path)
+            .unwrap()
+            .map(|r| {
+                r.unwrap()
+                    .path()
+                    .file_stem()
+                    .unwrap()
+                    .to_str()
+                    .unwrap()
+                    .to_string()
+            })
+            .collect::<Vec<String>>()
     }
 }
 
@@ -390,7 +413,13 @@ where
         base.into(),
         button("")
             .style(|_, _| button::Style {
-                background: Some(Color { a: 0.8, ..Color::BLACK }.into()),
+                background: Some(
+                    Color {
+                        a: 0.8,
+                        ..Color::BLACK
+                    }
+                    .into()
+                ),
                 ..button::Style::default()
             })
             .on_press(on_blur)
@@ -398,7 +427,7 @@ where
             .height(Length::Fill),
         center(content),
     ]
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .into()
+    .width(Length::Fill)
+    .height(Length::Fill)
+    .into()
 }
