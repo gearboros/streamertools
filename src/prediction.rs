@@ -2,7 +2,7 @@ use crate::twitch_api::{
     CreatePredictionRequest, CreatePredictionResponseData, EndPredictionRequest, PollChoice,
     PredictionStatus, cancel_prediction, create_prediction, end_prediction, lock_prediction,
 };
-use crate::{App, AppPhase, Message, SPACING, prediction};
+use crate::{App, AppPhase, Message, SPACING, load_config, prediction, save_config};
 use iced::widget::{
     Button, Column, Container, PickList, Text, TextInput, button, column, pick_list, row, rule,
     text_input,
@@ -12,7 +12,6 @@ use iced_aw::number_input;
 use rand::prelude::SliceRandom;
 use rand::rng;
 use serde::{Deserialize, Serialize};
-use std::fs;
 
 #[derive(Default, Debug, Serialize, Deserialize, Clone)]
 #[serde(default)]
@@ -119,16 +118,14 @@ impl App {
                 Task::none()
             }
             SaveConfig => {
-                let json = serde_json::to_string(&self.prediction_state).unwrap();
-                let pred = self.prediction_state.name.clone();
-                let path = self
-                    .config_path
-                    .join("predictions")
-                    .join(format!("{}.json", pred));
-                fs::write(&path, json).unwrap();
-                let preds = Self::load_files(self.config_path.join("predictions"));
-                self.predictions = preds;
-                self.selected_prediction = Some(pred);
+                save_config(
+                    &self.config_path,
+                    "predictions",
+                    &self.prediction_state.name,
+                    &self.prediction_state,
+                );
+                self.predictions = Self::load_files(self.config_path.join("predictions"));
+                self.selected_prediction = Some(self.prediction_state.name.clone());
                 self.prediction_loaded = true;
                 Task::none()
             }
@@ -227,23 +224,13 @@ impl App {
                 Task::none()
             }
             ConfigSelected(c) => {
-                self.selected_prediction = Some(c.clone());
-                let selection = &self.selected_prediction;
-                if let Some(pred) = selection {
-                    let path = &self
-                        .config_path
-                        .join("predictions")
-                        .join(format!("{}.json", pred));
-                    let config: Option<PredictionState> =
-                        fs::read_to_string(path).ok().and_then(|t| {
-                            let result = serde_json::from_str(&t);
-                            result.ok()
-                        });
-                    if let Some(state) = config {
-                        self.prediction_state = state;
-                        self.prediction_loaded = true;
-                    }
+                if let Some(state) =
+                    load_config::<PredictionState>(&self.config_path, "predictions", &c)
+                {
+                    self.prediction_state = state;
+                    self.prediction_loaded = true;
                 }
+                self.selected_prediction = Some(c);
                 Task::none()
             }
             LockPrediction => {

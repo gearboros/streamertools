@@ -14,6 +14,8 @@ use iced::{Color, Element, Length, Renderer, Subscription, Task, Theme, time};
 use iced_aw::{TabBar, TabLabel};
 use poll::{PollMessage, PollState};
 use prediction::{PredictionMessage, PredictionState};
+use serde::Serialize;
+use serde::de::DeserializeOwned;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -399,6 +401,17 @@ impl App {
             })
             .collect::<Vec<String>>()
     }
+}
+
+fn save_config<T: Serialize>(root: &Path, subdir: &str, name: &str, state: &T) {
+    let json = serde_json::to_string(state).unwrap();
+    fs::write(root.join(subdir).join(format!("{name}.json")), json).unwrap();
+}
+
+fn load_config<T: DeserializeOwned>(root: &Path, subdir: &str, name: &str) -> Option<T> {
+    fs::read_to_string(root.join(subdir).join(format!("{name}.json")))
+        .ok()
+        .and_then(|t| serde_json::from_str(&t).ok())
 }
 
 fn modal<'a>(

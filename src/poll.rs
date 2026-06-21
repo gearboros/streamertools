@@ -2,7 +2,7 @@ use crate::poll::PollMessage::DurationChange;
 use crate::twitch_api::{
     CreatePollRequest, PollChoice, PollPhase, PollStateData, create_poll, end_poll,
 };
-use crate::{App, AppPhase, Message, SPACING};
+use crate::{App, AppPhase, Message, SPACING, load_config, save_config};
 use iced::widget::{
     Button, Checkbox, Column, Container, PickList, Text, TextInput, button, checkbox, column,
     pick_list, row, rule, text_input,
@@ -10,7 +10,6 @@ use iced::widget::{
 use iced::{Center, Element, Length, Renderer, Task, Theme};
 use iced_aw::number_input;
 use serde::{Deserialize, Serialize};
-use std::fs;
 
 impl App {
     pub fn handle_poll(&mut self, poll_message: PollMessage) -> Task<Message> {
@@ -94,36 +93,23 @@ impl App {
                 Task::none()
             }
             SaveConfig => {
-                let json = serde_json::to_string(&self.poll_state).unwrap();
-                let poll = self.poll_state.name.clone();
-                let path = self
-                    .config_path
-                    .join("polls")
-                    .join(format!("{}.json", poll));
-                fs::write(&path, json).unwrap();
-                let polls = Self::load_files(self.config_path.join("polls"));
-                self.polls = polls;
-                self.selected_poll = Some(poll);
+                save_config(
+                    &self.config_path,
+                    "polls",
+                    &self.poll_state.name,
+                    &self.poll_state,
+                );
+                self.polls = Self::load_files(self.config_path.join("polls"));
+                self.selected_poll = Some(self.poll_state.name.clone());
                 self.poll_loaded = true;
                 Task::none()
             }
             ConfigSelected(c) => {
-                self.selected_poll = Some(c.clone());
-                let selection = &self.selected_poll;
-                if let Some(poll) = selection {
-                    let path = &self
-                        .config_path
-                        .join("polls")
-                        .join(format!("{}.json", poll));
-                    let config: Option<PollState> = fs::read_to_string(path).ok().and_then(|t| {
-                        let result = serde_json::from_str(&t);
-                        result.ok()
-                    });
-                    if let Some(state) = config {
-                        self.poll_state = state;
-                        self.poll_loaded = true;
-                    }
+                if let Some(state) = load_config::<PollState>(&self.config_path, "polls", &c) {
+                    self.poll_state = state;
+                    self.poll_loaded = true;
                 }
+                self.selected_poll = Some(c);
                 Task::none()
             }
             NewConfig => {
