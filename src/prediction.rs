@@ -36,7 +36,9 @@ pub enum PredictionMessage {
     PredictionCreated(Result<CreatePredictionResponseData, String>),
     DurationChange(usize),
     WinnerChosen(String),
-    PredictionEnded,
+    PredictionEnded(Result<(), String>),
+    PredictionLocked(Result<(), String>),
+    PredictionCanceled(Result<(), String>),
     ConfigSelected(String),
     SaveConfig,
     NewConfig,
@@ -217,14 +219,20 @@ impl App {
                 let client = self.client.clone();
                 Task::perform(
                     async move { end_prediction(&client, request, &token).await },
-                    |_r| Message::Prediction(PredictionEnded),
+                    |r| Message::Prediction(PredictionEnded(r)),
                 )
             }
-            PredictionEnded => {
-                self.prediction_state.current_state = None;
-                self.prediction_state.phase = Some(PredictionStatus::Resolved);
-                Task::none()
-            }
+            PredictionEnded(r) => match r {
+                Ok(()) => {
+                    self.prediction_state.current_state = None;
+                    self.prediction_state.phase = Some(PredictionStatus::Resolved);
+                    Task::none()
+                }
+                Err(e) => {
+                    self.phase = AppPhase::PredictionPolling;
+                    Task::done(Message::Error(e))
+                }
+            },
             ConfigSelected(c) => {
                 if let Some(state) =
                     load_config::<PredictionState>(&self.config_path, "predictions", &c)
@@ -239,16 +247,28 @@ impl App {
                 let token = self.access_token.clone().unwrap_or_default();
                 let request = self.create_end_prediction_request();
                 let client = self.client.clone();
-                Task::future(async move { lock_prediction(&client, request, &token).await })
-                    .discard()
+                Task::perform(
+                    async move { lock_prediction(&client, request, &token).await },
+                    |r| Message::Prediction(PredictionLocked(r)),
+                )
             }
+            PredictionLocked(r) => match r {
+                Ok(()) => Task::none(),
+                Err(e) => Task::done(Message::Error(e)),
+            },
             CancelPrediction => {
                 let token = self.access_token.clone().unwrap_or_default();
                 let request = self.create_end_prediction_request();
                 let client = self.client.clone();
-                Task::future(async move { cancel_prediction(&client, request, &token).await })
-                    .discard()
+                Task::perform(
+                    async move { cancel_prediction(&client, request, &token).await },
+                    |r| Message::Prediction(PredictionCanceled(r)),
+                )
             }
+            PredictionCanceled(r) => match r {
+                Ok(()) => Task::none(),
+                Err(e) => Task::done(Message::Error(e)),
+            },
             ResetPrediction => {
                 self.prediction_state.phase = None;
                 Task::none()

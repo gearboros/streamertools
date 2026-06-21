@@ -88,13 +88,16 @@ impl App {
                 let client = self.client.clone();
                 Task::perform(
                     async move { end_poll(&client, &broadcaster, &poll_id, &token).await },
-                    |_| Message::Poll(PollEnded),
+                    |r| Message::Poll(PollEnded(r)),
                 )
             }
-            PollEnded => {
-                self.poll_state.current_state = None;
-                Task::none()
-            }
+            PollEnded(r) => match r {
+                Ok(()) => {
+                    self.poll_state.current_state = None;
+                    Task::none()
+                }
+                Err(e) => Task::done(Message::Error(e)),
+            },
             SaveConfig => {
                 if let Err(e) = save_config(
                     &self.config_path,
@@ -363,7 +366,7 @@ pub enum PollMessage {
     ChannelPointsToggled(bool),
     PointCostChange(usize),
     EndPoll,
-    PollEnded,
+    PollEnded(Result<(), String>),
     ConfigSelected(String),
     SaveConfig,
     NewConfig,
