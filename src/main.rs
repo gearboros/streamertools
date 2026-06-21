@@ -7,13 +7,14 @@ mod auth;
 use std::fs;
 use std::path::PathBuf;
 use std::time::Duration;
-use iced::widget::{button, center, column, container, row, stack, text, Container, Text};
+use iced::widget::{button, center, column, container, row, stack, text, Container, Space, Text};
 use iced::{time, Color, Element, Length, Renderer, Subscription, Task, Theme};
 use iced::alignment::Vertical;
 use crate::twitch_auth::*;
 use tracing::info;
 use iced_aw::{TabBar, TabLabel};
 use directories::ProjectDirs;
+use iced::widget::space::horizontal;
 use auth::AuthMessage;
 use poll::{PollMessage, PollState};
 use prediction::{PredictionMessage, PredictionState};
@@ -69,6 +70,7 @@ struct App {
     phase: AppPhase,
     active_tab: TabId,
     err: String,
+    confirm: Option<String>,
     poll_state: PollState,
     polls: Vec<String>,
     selected_poll: Option<String>,
@@ -234,11 +236,32 @@ impl App {
                 ]
                     .spacing(20),
             )
-            .width(600)
-            .padding(10)
-            .style(container::rounded_box);
+                .width(600)
+                .padding(10)
+                .style(container::rounded_box);
 
             modal(content.padding(20), error, Message::ClearError)
+        } else if self.confirm.is_some() {
+            let confirm = container(
+                column![
+                    text("Confirm").size(24),
+                    column![
+                        text(self.confirm.clone().unwrap().clone()),
+                        row![
+                            horizontal(),
+                            button(text("No")).on_press(Message::Auth(AuthMessage::FallbackConfirmed(false))),
+                            button(text("Yes")).on_press(Message::Auth(AuthMessage::FallbackConfirmed(true))),
+                        ].spacing(SPACING)
+                    ]
+                    .spacing(10)
+                ]
+                    .spacing(20),
+            )
+                .width(600)
+                .padding(10)
+                .style(container::rounded_box);
+
+            modal(content.padding(20), confirm, Message::Auth(AuthMessage::FallbackConfirmed(false)))
         } else {
             container(content.padding(20))
                 .into()

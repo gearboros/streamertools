@@ -122,7 +122,7 @@ pub async fn refresh_access_token(refresh_token: &str) -> Result<(String, String
 }
 
 /// Saves the tokens to an OS provided keyring, falls back to a storage file if that fails.
-pub fn save_tokens(access: &str, refresh: &str, path: &PathBuf) -> Result<(), String> {
+pub fn save_tokens(access: &str, refresh: &str) -> Result<(), String> {
     info!("Saving tokens...");
 
     match save_tokens_to_keyring(access, refresh) {
@@ -130,14 +130,14 @@ pub fn save_tokens(access: &str, refresh: &str, path: &PathBuf) -> Result<(), St
             info!("Tokens saved to keyring");
             Ok(())
         }
-        Err(e) => {
-            warn!("Keyring unavailable ({}), falling back to file storage", e);
-            save_tokens_to_file(access, refresh, path)
+        Err(_e) => {
+            Err("Could not save tokens to keyring".to_string())
         }
     }
 }
 
 fn save_tokens_to_keyring(access: &str, refresh: &str) -> Result<(), String> {
+    return Err(String::from("t"));
     Entry::new("streamertools", "access_token")
         .map_err(|e| e.to_string())?
         .set_password(access)
@@ -148,13 +148,21 @@ fn save_tokens_to_keyring(access: &str, refresh: &str) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
-fn save_tokens_to_file(access: &str, refresh: &str, path: &PathBuf) -> Result<(), String> {
+pub fn save_tokens_to_file(access: &str, refresh: &str, path: &PathBuf) -> Result<(), String> {
     let tokens = StoredTokens {
         access_token: access.to_string(),
         refresh_token: refresh.to_string(),
     };
     let json = serde_json::to_string_pretty(&tokens).map_err(|e| e.to_string())?;
-    fs::write(path, json).map_err(|e| format!("Failed to write token file: {}", e))?;
+    let file_path = path.join("tokens.json");
+    fs::write(&file_path, json).map_err(|e| format!("Failed to write token file: {}", e))?;
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&file_path, fs::Permissions::from_mode(0o600)).map_err(|e| e.to_string())?;
+    }
+
     info!("Tokens saved to file: {:?}", path);
     Ok(())
 }
@@ -185,7 +193,8 @@ fn load_tokens_from_keyring() -> Option<(String, String)> {
 }
 
 fn load_tokens_from_file(path: &PathBuf) -> Option<(String, String)> {
-    let json = fs::read_to_string(path).ok()?;
+    let file_path = path.join("tokens.json");
+    let json = fs::read_to_string(file_path).ok()?;
     let tokens: StoredTokens = serde_json::from_str(&json).ok()?;
     info!("Tokens loaded from file: {:?}", path);
     Some((tokens.access_token, tokens.refresh_token))
