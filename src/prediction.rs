@@ -4,8 +4,8 @@ use crate::twitch_api::{
 };
 use crate::{load_config, prediction, save_config, App, AppPhase, Message, SPACING};
 use iced::widget::{
-    button, column, container, pick_list, row, rule, text, text_input, Button, Column,
-    Container, PickList, Text, TextInput,
+    button, column, container, pick_list, row, rule, text, text_input, tooltip, Button,
+    Column, Container, PickList, Text, TextInput,
 };
 use iced::{Center, Element, Length, Renderer, Task, Theme};
 use iced_aw::number_input;
@@ -134,6 +134,7 @@ impl App {
                 Task::none()
             }
             NewConfig => {
+                self.prediction_state.name = String::new();
                 self.prediction_loaded = false;
                 self.selected_prediction = None;
                 Task::none()
@@ -313,10 +314,27 @@ impl App {
         let new_btn: Button<_> = button("New")
             .on_press(Message::Prediction(PredictionMessage::NewConfig))
             .style(crate::style::neutral_button);
-        let save_btn: Button<_> = button("Save")
-            .on_press(Message::Prediction(PredictionMessage::SaveConfig))
-            .style(crate::style::neutral_button);
-        let save_row = row![dropdown, name_input, new_btn, save_btn].spacing(SPACING);
+
+        let can_save = self.prediction_loaded
+            || (!self.prediction_loaded && !self.predictions.contains(&self.prediction_state.name));
+
+        let save_btn = button("Save").style(crate::style::neutral_button);
+        let save_elem: Element<'_, Message> = if can_save {
+            save_btn
+                .on_press(Message::Prediction(PredictionMessage::SaveConfig))
+                .into()
+        } else {
+            tooltip(
+                save_btn,
+                container("Config with this name already exists, to change load the config first.")
+                    .padding(10)
+                    .style(container::dark),
+                tooltip::Position::Bottom,
+            )
+            .into()
+        };
+
+        let save_row = row![dropdown, name_input, new_btn, save_elem].spacing(SPACING);
 
         let title_input = text_input("Prediction title", &state.title)
             .on_input(|r| Message::Prediction(PredictionMessage::TitleChanged(r)));

@@ -5,8 +5,8 @@ use crate::twitch_api::{
 use crate::AppPhase::NoPolling;
 use crate::{load_config, save_config, App, AppPhase, Message, SPACING};
 use iced::widget::{
-    button, checkbox, column, container, pick_list, row, rule, text, text_input, Button,
-    Checkbox, Column, Container, PickList, Text, TextInput,
+    button, checkbox, column, container, pick_list, row, rule, text, text_input, tooltip,
+    Button, Checkbox, Column, Container, PickList, Text, TextInput,
 };
 use iced::{Center, Element, Length, Renderer, Task, Theme};
 use iced_aw::number_input;
@@ -123,6 +123,7 @@ impl App {
                 Task::none()
             }
             NewConfig => {
+                self.poll_state.name = String::new();
                 self.poll_loaded = false;
                 self.selected_poll = None;
                 Task::none()
@@ -148,11 +149,27 @@ impl App {
         let new_btn: Button<_> = button("New")
             .on_press(Message::Poll(PollMessage::NewConfig))
             .style(crate::style::neutral_button);
-        let save_btn: Button<_> = button("Save")
-            .on_press(Message::Poll(PollMessage::SaveConfig))
-            .style(crate::style::neutral_button);
 
-        let save_row = row![dropdown, name_input, new_btn, save_btn].spacing(SPACING);
+        let can_save =
+            self.poll_loaded || (!self.poll_loaded && !self.polls.contains(&self.poll_state.name));
+
+        let save_btn = button("Save").style(crate::style::neutral_button);
+        let save_elem: Element<'_, Message> = if can_save {
+            save_btn
+                .on_press(Message::Poll(PollMessage::SaveConfig))
+                .into()
+        } else {
+            tooltip(
+                save_btn,
+                container("Config with this name already exists, to change load the config first.")
+                    .padding(10)
+                    .style(container::dark),
+                tooltip::Position::Bottom,
+            )
+            .into()
+        };
+
+        let save_row = row![dropdown, name_input, new_btn, save_elem].spacing(SPACING);
 
         let title_input = text_input("Poll title", &state.title)
             .on_input(|r| Message::Poll(PollMessage::TitleChanged(r)));
