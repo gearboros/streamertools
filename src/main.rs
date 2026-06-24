@@ -1,9 +1,11 @@
 mod auth;
 mod poll;
 mod prediction;
+mod style;
 mod twitch_api;
 mod twitch_auth;
 
+use crate::style::{twitch_button, twitch_tab};
 use crate::twitch_auth::*;
 use auth::AuthMessage;
 use directories::ProjectDirs;
@@ -232,11 +234,16 @@ impl App {
     }
 
     fn view(&'_ self) -> Element<'_, Message> {
-        let tab_bar = TabBar::new(Message::TabSelected)
-            .push(TabId::Prediction.idx(), TabLabel::Text("Prediction".into()))
-            .push(TabId::Poll.idx(), TabLabel::Text("Poll".into()))
+        let mut tab_bar = TabBar::new(Message::TabSelected)
+            .push(
+                TabId::Prediction.idx(),
+                TabLabel::Text("Prediction 🎲".into()),
+            )
+            .push(TabId::Poll.idx(), TabLabel::Text("Poll 📊".into()))
             .push(TabId::Misc.idx(), TabLabel::Text("Misc".into()))
             .set_active_tab(&self.active_tab.idx());
+
+        tab_bar = tab_bar.style(twitch_tab);
 
         let auth_btn = if self.auth_in_progress {
             button("Authenticating...")
@@ -244,7 +251,8 @@ impl App {
             button("Re-authenticate").on_press(Message::Auth(AuthMessage::StartAuth))
         } else {
             button("Login with Twitch").on_press(Message::Auth(AuthMessage::StartAuth))
-        };
+        }
+        .style(twitch_button);
 
         let mut content = column![].spacing(SPACING);
         let auth_text = self.auth_status.clone().trim().to_string();

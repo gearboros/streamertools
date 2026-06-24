@@ -4,8 +4,8 @@ use crate::twitch_api::{
 };
 use crate::{load_config, prediction, save_config, App, AppPhase, Message, SPACING};
 use iced::widget::{
-    button, column, container, pick_list, row, rule, text_input, Button, Column, Container,
-    PickList, Text, TextInput,
+    button, column, container, pick_list, row, rule, text, text_input, Button, Column,
+    Container, PickList, Text, TextInput,
 };
 use iced::{Center, Element, Length, Renderer, Task, Theme};
 use iced_aw::number_input;
@@ -302,17 +302,20 @@ impl App {
             self.predictions.clone(),
             self.selected_prediction.clone(),
             |t| Message::Prediction(PredictionMessage::ConfigSelected(t)),
-        );
+        )
+        .placeholder("Select a config to load");
         let state = self.prediction_state.clone();
         let mut name_input: TextInput<_> = text_input("Config Name", &state.name);
         if !self.prediction_loaded {
             name_input =
                 name_input.on_input(|n| Message::Prediction(PredictionMessage::NameChanged(n)));
         }
-        let new_btn: Button<_> =
-            button("New").on_press(Message::Prediction(PredictionMessage::NewConfig));
-        let save_btn: Button<_> =
-            button("Save").on_press(Message::Prediction(PredictionMessage::SaveConfig));
+        let new_btn: Button<_> = button("New")
+            .on_press(Message::Prediction(PredictionMessage::NewConfig))
+            .style(crate::style::neutral_button);
+        let save_btn: Button<_> = button("Save")
+            .on_press(Message::Prediction(PredictionMessage::SaveConfig))
+            .style(crate::style::neutral_button);
         let save_row = row![dropdown, name_input, new_btn, save_btn].spacing(SPACING);
 
         let title_input = text_input("Prediction title", &state.title)
@@ -325,7 +328,9 @@ impl App {
                     text_input(format!("Option {}", idx + 1).as_str(), option).on_input(move |s| {
                         Message::Prediction(PredictionMessage::OptionChanged(idx, s))
                     });
-                let mut rem_btn = button("-");
+                let mut rem_btn = button(text("-").center())
+                    .width(30)
+                    .style(crate::style::red_button);
                 if state.options.len() > 2 && state.phase == None {
                     rem_btn =
                         rem_btn.on_press(Message::Prediction(PredictionMessage::RemoveOption(idx)));
@@ -349,7 +354,7 @@ impl App {
             }
         }
 
-        let mut add_btn = button("+");
+        let mut add_btn = button(text("+").center()).width(30);
         let mut switch_btn = button("Switch Options");
         let mut shuffle_btn = button("Shuffle Options");
         if state.phase == None {
@@ -383,14 +388,14 @@ impl App {
         if state.phase == Some(PredictionStatus::Active) {
             lock_btn = lock_btn.on_press(Message::Prediction(PredictionMessage::LockPrediction));
         }
-        let mut cancel_btn = button("Cancel");
+        let mut cancel_btn = button("Cancel").style(crate::style::red_button);
         if state.phase == Some(PredictionStatus::Active)
             || state.phase == Some(PredictionStatus::Locked)
         {
             cancel_btn =
                 cancel_btn.on_press(Message::Prediction(PredictionMessage::CancelPrediction));
         }
-        let mut reset_btn = button("Reset");
+        let mut reset_btn = button("Reset").style(crate::style::neutral_button);
         if state.phase == Some(PredictionStatus::Resolved)
             || state.phase == Some(PredictionStatus::Canceled)
         {
@@ -402,10 +407,10 @@ impl App {
 
         let form = column![
             save_row,
+            rule::horizontal(2),
             title_input,
             opt_col,
             option_btn_row,
-            rule::horizontal(2),
             duration_row,
             rule::horizontal(2),
             btn_row,

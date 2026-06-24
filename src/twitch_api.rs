@@ -1,6 +1,5 @@
 use crate::CLIENT_ID;
 use reqwest::{RequestBuilder, Response};
-use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use tracing::error;
 

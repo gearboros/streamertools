@@ -5,8 +5,8 @@ use crate::twitch_api::{
 use crate::AppPhase::NoPolling;
 use crate::{load_config, save_config, App, AppPhase, Message, SPACING};
 use iced::widget::{
-    button, checkbox, column, container, pick_list, row, rule, text_input, Button, Checkbox,
-    Column, Container, PickList, Text, TextInput,
+    button, checkbox, column, container, pick_list, row, rule, text, text_input, Button,
+    Checkbox, Column, Container, PickList, Text, TextInput,
 };
 use iced::{Center, Element, Length, Renderer, Task, Theme};
 use iced_aw::number_input;
@@ -138,14 +138,19 @@ impl App {
         let dropdown: PickList<'_, String, Vec<String>, String, Message> =
             pick_list(self.polls.clone(), self.selected_poll.clone(), |t| {
                 Message::Poll(PollMessage::ConfigSelected(t))
-            });
+            })
+            .placeholder("Select a config to load");
         let state = self.poll_state.clone();
         let mut name_input: TextInput<_> = text_input("Config Name", &state.name);
         if !self.poll_loaded {
             name_input = name_input.on_input(|n| Message::Poll(PollMessage::NameChanged(n)));
         }
-        let new_btn: Button<_> = button("New").on_press(Message::Poll(PollMessage::NewConfig));
-        let save_btn: Button<_> = button("Save").on_press(Message::Poll(PollMessage::SaveConfig));
+        let new_btn: Button<_> = button("New")
+            .on_press(Message::Poll(PollMessage::NewConfig))
+            .style(crate::style::neutral_button);
+        let save_btn: Button<_> = button("Save")
+            .on_press(Message::Poll(PollMessage::SaveConfig))
+            .style(crate::style::neutral_button);
 
         let save_row = row![dropdown, name_input, new_btn, save_btn].spacing(SPACING);
 
@@ -155,14 +160,18 @@ impl App {
         for (idx, option) in state.options.iter().enumerate() {
             let input = text_input(format!("Option {}", idx + 1).as_str(), option)
                 .on_input(move |s| Message::Poll(PollMessage::OptionChanged(idx, s)));
-            let mut rem_btn = button("-");
+            let mut rem_btn = button(text("-").center())
+                .width(30)
+                .style(crate::style::red_button);
             if state.options.len() > 2 {
                 rem_btn = rem_btn.on_press(Message::Poll(PollMessage::RemoveOption(idx)));
             }
             opt_col = opt_col.push(row![rem_btn, input].spacing(SPACING));
         }
 
-        let add_btn = button("+").on_press(Message::Poll(PollMessage::AddOption));
+        let add_btn = button(text("+").center())
+            .width(30)
+            .on_press(Message::Poll(PollMessage::AddOption));
         let option_btn_row = row![add_btn].spacing(SPACING);
 
         let duration_text = Text::new("Duration in mins: ");
@@ -199,12 +208,11 @@ impl App {
 
         let form = column![
             save_row,
+            rule::horizontal(2),
             title_input,
             opt_col,
             option_btn_row,
-            rule::horizontal(2),
             duration_row,
-            rule::horizontal(2),
             channel_row,
             rule::horizontal(2),
             btns,
