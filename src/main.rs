@@ -1,6 +1,7 @@
 mod auth;
 mod poll;
 mod prediction;
+mod sample_data;
 mod style;
 mod twitch_api;
 mod twitch_auth;
@@ -88,6 +89,7 @@ struct App {
     selected_prediction: Option<String>,
     prediction_loaded: bool,
     config_path: PathBuf,
+    debug: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -115,6 +117,7 @@ enum Message {
 }
 
 const SPACING: u32 = 10;
+const BIG_SPACING: u32 = 30;
 
 impl App {
     fn update(&mut self, message: Message) -> Task<Message> {
@@ -349,6 +352,8 @@ fn subscription(app: &App) -> Subscription<Message> {
 }
 
 fn main() -> iced::Result {
+    let debug = std::env::args().any(|x| x == "--debug");
+
     // create all config dirs
     let proj = ProjectDirs::from("dev", "gearboros", "streamertools").unwrap();
     let config_path = proj.config_dir().to_path_buf();
@@ -378,15 +383,19 @@ fn main() -> iced::Result {
 
     info!("Starting Streamer Tools");
 
-    iced::application(move || App::new(&config_path), App::update, App::view)
-        .title("Streamer Tools")
-        .font(iced_aw::ICED_AW_FONT_BYTES)
-        .subscription(subscription)
-        .run()
+    iced::application(
+        move || App::new(&config_path, debug),
+        App::update,
+        App::view,
+    )
+    .title("Streamer Tools")
+    .font(iced_aw::ICED_AW_FONT_BYTES)
+    .subscription(subscription)
+    .run()
 }
 
 impl App {
-    fn new(path: &Path) -> (Self, Task<Message>) {
+    fn new(path: &Path, debug: bool) -> (Self, Task<Message>) {
         let polls = Self::load_files(path.join("polls"));
         let preds = Self::load_files(path.join("predictions"));
 
@@ -413,6 +422,7 @@ impl App {
                 config_path,
                 polls,
                 predictions: preds,
+                debug,
                 ..Default::default()
             };
             let task = Task::done(Message::Auth(AuthMessage::ValidateToken));
@@ -427,6 +437,7 @@ impl App {
                 polls,
                 prediction_state,
                 predictions: preds,
+                debug,
                 ..Default::default()
             },
             Task::none(),

@@ -1,8 +1,10 @@
+use crate::sample_data::{prediction_five, prediction_ten, prediction_two};
+use crate::style::bold_text;
 use crate::twitch_api::{
     cancel_prediction, create_prediction, end_prediction, lock_prediction,
     CreatePredictionRequest, CreatePredictionResponseData, EndPredictionRequest, PollChoice, PredictionStatus,
 };
-use crate::{load_config, prediction, save_config, App, AppPhase, Message, SPACING};
+use crate::{load_config, prediction, save_config, App, AppPhase, Message, BIG_SPACING, SPACING};
 use iced::widget::{
     button, column, container, pick_list, row, rule, text, text_input, tooltip, Button,
     Column, Container, PickList, Text, TextInput,
@@ -47,6 +49,7 @@ pub enum PredictionMessage {
     LockPrediction,
     CancelPrediction,
     ResetPrediction,
+    LoadSampleData(CreatePredictionResponseData),
 }
 
 fn get_state_view(state: &PredictionState) -> Element<'static, Message, Theme, Renderer> {
@@ -69,7 +72,25 @@ fn get_state_view(state: &PredictionState) -> Element<'static, Message, Theme, R
     } else if state.phase == Some(PredictionStatus::Canceled) {
         Text::new("Prediction cancelled.").into()
     } else if state.phase == Some(PredictionStatus::Resolved) {
-        Text::new("Prediction resolved.").into()
+        let current = state.current_state.clone().expect("Should have state here");
+        let winner_id = current
+            .winning_outcome_id
+            .clone()
+            .expect("Should have a winner here");
+        let winner = current
+            .outcomes
+            .iter()
+            .find(|x| x.id == winner_id)
+            .expect("Should have winner here");
+        column![
+            row![
+                Text::new("Prediction resolved, Winner: "),
+                bold_text(winner.title.clone()),
+            ],
+            get_points_distribution(&state.current_state)
+        ]
+        .spacing(SPACING)
+        .into()
     } else {
         Text::new("").into()
     }
@@ -83,12 +104,15 @@ fn get_points_distribution(
     };
     let total_points = state.outcomes.iter().map(|o| o.channel_points).sum::<i32>();
     let total_users = state.outcomes.iter().map(|o| o.users).sum::<i32>();
-    let mut col: Column<_> = column![Text::new(format!(
-        "Total: {} points & {} users",
-        total_points, total_users
-    ))]
-    .spacing(SPACING);
-    for o in &state.outcomes {
+
+    let mut by_points = state.outcomes.clone();
+    by_points.sort_by_key(|o| std::cmp::Reverse(o.channel_points));
+
+    let mut title_col: Column<_> = column![bold_text("".to_string())].spacing(SPACING);
+    let mut point_col: Column<_> = column![bold_text("Points".to_string())].spacing(SPACING);
+    let mut user_col: Column<_> = column![bold_text("Users".to_string())].spacing(SPACING);
+
+    for o in &by_points {
         let user_percent = if total_users == 0 {
             0f64
         } else {
@@ -99,16 +123,27 @@ fn get_points_distribution(
         } else {
             (o.channel_points as f64) / (total_points as f64) * 100.0
         };
-        col = col.push(
-            row![
-                Text::new(o.title.clone()).width(Length::FillPortion(2)),
-                Text::new(format!("{:.2}% of points", point_percent)).width(Length::FillPortion(2)),
-                Text::new(format!("{:.2}% of users", user_percent)).width(Length::FillPortion(2)),
-            ]
-            .spacing(SPACING),
-        );
+        title_col = title_col.push(text(format!("• {}", o.title)));
+        point_col = point_col.push(text(format!(
+            "{} points, {:.2}%",
+            o.channel_points, point_percent
+        )));
+        user_col = user_col.push(text(format!("{} users, {:.2}%", o.users, user_percent)));
     }
-    col.into()
+
+    let grid = row![title_col, point_col, user_col].spacing(BIG_SPACING);
+
+    container(
+        column![
+            Text::new(format!(
+                "Total: {} points & {} users",
+                total_points, total_users
+            )),
+            grid,
+        ]
+        .spacing(SPACING),
+    )
+    .into()
 }
 
 impl App {
@@ -271,13 +306,18 @@ impl App {
             }
             PredictionCanceled(r) => match r {
                 Ok(()) => {
-                    self.prediction_state.phase == Some(PredictionStatus::Canceled);
+                    self.prediction_state.phase = Some(PredictionStatus::Canceled);
                     Task::none()
                 }
                 Err(e) => Task::done(Message::Error(e)),
             },
             ResetPrediction => {
                 self.prediction_state.phase = None;
+                Task::none()
+            }
+            LoadSampleData(data) => {
+                self.prediction_state.current_state = Some(data);
+                self.prediction_state.phase = Some(PredictionStatus::Resolved);
                 Task::none()
             }
         }
@@ -420,6 +460,28 @@ impl App {
             reset_btn = reset_btn.on_press(Message::Prediction(PredictionMessage::ResetPrediction));
         }
         let btn_row = row![submit_btn, lock_btn, cancel_btn, reset_btn].spacing(SPACING);
+        let mut dbg_row = column![];
+        if self.debug {
+            let two_option_sample = button("Two Options")
+                .style(crate::style::dbg_button)
+                .on_press(Message::Prediction(PredictionMessage::LoadSampleData(
+                    prediction_two(),
+                )));
+            let five_option_sample = button("Five Options")
+                .style(crate::style::dbg_button)
+                .on_press(Message::Prediction(PredictionMessage::LoadSampleData(
+                    prediction_five(),
+                )));
+            let ten_option_sample = button("Ten Options")
+                .style(crate::style::dbg_button)
+                .on_press(Message::Prediction(PredictionMessage::LoadSampleData(
+                    prediction_ten(),
+                )));
+            dbg_row = column![
+                rule::horizontal(2),
+                row![two_option_sample, five_option_sample, ten_option_sample].spacing(SPACING)
+            ];
+        }
 
         let status_display = get_state_view(&state);
 
@@ -432,6 +494,7 @@ impl App {
             duration_row,
             rule::horizontal(2),
             btn_row,
+            dbg_row,
         ]
         .spacing(SPACING);
 

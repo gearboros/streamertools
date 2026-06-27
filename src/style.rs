@@ -1,4 +1,4 @@
-use iced::widget::button;
+use iced::widget::{button, Text};
 use iced::{Background, Color, Theme};
 use iced_aw::style::{tab_bar, Status};
 
@@ -29,6 +29,25 @@ pub fn neutral_button(_theme: &Theme, status: button::Status) -> button::Style {
     button::Style {
         background: Some(background.into()),
         text_color: Color::WHITE,
+        ..button::Style::default()
+    }
+}
+
+pub fn dbg_button(_theme: &Theme, status: button::Status) -> button::Style {
+    let background = match status {
+        button::Status::Hovered => Color::from_rgb8(0xFF, 0xF9, 0x7D),
+        button::Status::Pressed => Color::from_rgb8(0xF5, 0x7C, 0x00),
+        button::Status::Disabled => Color::from_rgb8(0xFF, 0xE5, 0x8D),
+        button::Status::Active => Color::from_rgb8(0xFF, 0xEB, 0x3B),
+    };
+    button::Style {
+        background: Some(background.into()),
+        text_color: Color::BLACK,
+        border: iced::border::Border {
+            color: Color::BLACK,
+            width: 1.0,
+            radius: 4.0.into(),
+        },
         ..button::Style::default()
     }
 }
@@ -69,4 +88,11 @@ pub fn twitch_tab(_theme: &Theme, status: Status) -> tab_bar::Style {
         text_color: Color::WHITE,
         ..tab_bar::Style::default()
     }
+}
+
+pub fn bold_text<'a>(text: String) -> Text<'a> {
+    Text::new(text).font(iced::Font {
+        weight: iced::font::Weight::Bold,
+        ..Default::default()
+    })
 }
