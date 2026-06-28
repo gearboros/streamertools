@@ -1,4 +1,4 @@
-use crate::sample_data::{prediction_five, prediction_ten, prediction_two};
+use crate::sample_data::{prediction_five, prediction_ongoing, prediction_ten, prediction_two};
 use crate::style::{bold_text, thousand_separator};
 use crate::twitch_api::{
     cancel_prediction, create_prediction, end_prediction, lock_prediction,
@@ -318,8 +318,8 @@ impl App {
                 Task::none()
             }
             LoadSampleData(data) => {
+                self.prediction_state.phase = Some(data.status.clone());
                 self.prediction_state.current_state = Some(data);
-                self.prediction_state.phase = Some(PredictionStatus::Resolved);
                 Task::none()
             }
         }
@@ -479,9 +479,21 @@ impl App {
                 .on_press(Message::Prediction(PredictionMessage::LoadSampleData(
                     prediction_ten(),
                 )));
+            let ongoing_sample =
+                button("Ongoing")
+                    .style(crate::style::dbg_button)
+                    .on_press(Message::Prediction(PredictionMessage::LoadSampleData(
+                        prediction_ongoing(),
+                    )));
             dbg_row = column![
                 rule::horizontal(2),
-                row![two_option_sample, five_option_sample, ten_option_sample].spacing(SPACING)
+                row![
+                    two_option_sample,
+                    five_option_sample,
+                    ten_option_sample,
+                    ongoing_sample
+                ]
+                .spacing(SPACING)
             ];
         }
 

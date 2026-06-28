@@ -90,7 +90,7 @@ fn prediction(outcomes: Vec<PredictionOutcome>) -> CreatePredictionResponseData 
         broadcaster_id: "test-broadcaster".to_string(),
         winning_outcome_id: Some("1".to_string()),
         outcomes,
-        status: PredictionStatus::Active,
+        status: PredictionStatus::Resolved,
         created_at: None,
         ended_at: None,
         locked_at: None,
@@ -102,6 +102,23 @@ pub fn prediction_two() -> CreatePredictionResponseData {
         outcome("1", "Yes", 120, 45_000, "BLUE"),
         outcome("2", "No", 80, 30_000, "PINK"),
     ])
+}
+
+pub fn prediction_ongoing() -> CreatePredictionResponseData {
+    let outcomes = vec![
+        outcome("1", "Yes", 120, 45_000, "BLUE"),
+        outcome("2", "No", 80, 30_000, "PINK"),
+    ];
+    CreatePredictionResponseData {
+        id: "test-prediction".to_string(),
+        broadcaster_id: "test-broadcaster".to_string(),
+        winning_outcome_id: Some("1".to_string()),
+        outcomes,
+        status: PredictionStatus::Active,
+        created_at: None,
+        ended_at: None,
+        locked_at: None,
+    }
 }
 
 pub fn prediction_five() -> CreatePredictionResponseData {
