@@ -2,7 +2,7 @@ use crate::poll::PollMessage::DurationChange;
 use crate::sample_data::{
     poll_points_winner, poll_popular_winner, poll_total_winner, running_poll,
 };
-use crate::style::bold_text;
+use crate::style::{bold_text, thousand_separator};
 use crate::twitch_api::{
     create_poll, end_poll, CreatePollRequest, PollChoice, PollChoiceState, PollPhase, PollStateData,
 };
@@ -387,7 +387,7 @@ fn get_votes_result(
             "{} votes, {:.2}% ({} points)",
             o.channel_point_votes,
             point_vote_percent,
-            o.channel_point_votes * (cost as i32)
+            thousand_separator(o.channel_point_votes * (cost as i32))
         )));
     }
 
@@ -400,7 +400,7 @@ fn get_votes_result(
                 total_votes,
                 total_popular_votes,
                 total_point_votes,
-                total_point_votes * (cost as i32)
+                thousand_separator(total_point_votes * (cost as i32))
             )),
             grid,
         ]

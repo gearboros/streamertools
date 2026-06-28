@@ -1,5 +1,5 @@
 use crate::sample_data::{prediction_five, prediction_ten, prediction_two};
-use crate::style::bold_text;
+use crate::style::{bold_text, thousand_separator};
 use crate::twitch_api::{
     cancel_prediction, create_prediction, end_prediction, lock_prediction,
     CreatePredictionRequest, CreatePredictionResponseData, EndPredictionRequest, PollChoice, PredictionStatus,
@@ -126,7 +126,8 @@ fn get_points_distribution(
         title_col = title_col.push(text(format!("• {}", o.title)));
         point_col = point_col.push(text(format!(
             "{} points, {:.2}%",
-            o.channel_points, point_percent
+            thousand_separator(o.channel_points),
+            point_percent
         )));
         user_col = user_col.push(text(format!("{} users, {:.2}%", o.users, user_percent)));
     }
@@ -137,7 +138,8 @@ fn get_points_distribution(
         column![
             Text::new(format!(
                 "Total: {} points & {} users",
-                total_points, total_users
+                thousand_separator(total_points),
+                total_users
             )),
             grid,
         ]

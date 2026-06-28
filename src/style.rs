@@ -96,3 +96,62 @@ pub fn bold_text<'a>(text: String) -> Text<'a> {
         ..Default::default()
     })
 }
+
+pub fn thousand_separator(number: i32) -> String {
+    let s = number.to_string();
+    let (sign, digits) = match s.strip_prefix('-') {
+        Some(rest) => ("-", rest),
+        None => ("", s.as_str()),
+    };
+    let len = digits.len();
+    let mut out = String::with_capacity(sign.len() + len + len / 3);
+    out.push_str(sign);
+    for (i, c) in digits.chars().enumerate() {
+        if i > 0 && (len - i) % 3 == 0 {
+            out.push('.');
+        }
+        out.push(c);
+    }
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::thousand_separator;
+
+    #[test]
+    fn zero() {
+        assert_eq!(thousand_separator(0), "0");
+    }
+
+    #[test]
+    fn no_separator_below_one_thousand() {
+        assert_eq!(thousand_separator(1), "1");
+        assert_eq!(thousand_separator(999), "999");
+    }
+
+    #[test]
+    fn single_separator() {
+        assert_eq!(thousand_separator(1000), "1.000");
+        assert_eq!(thousand_separator(999999), "999.999");
+    }
+
+    #[test]
+    fn multiple_separators() {
+        assert_eq!(thousand_separator(1000000), "1.000.000");
+        assert_eq!(thousand_separator(1234567), "1.234.567");
+    }
+
+    #[test]
+    fn negative_numbers() {
+        assert_eq!(thousand_separator(-1), "-1");
+        assert_eq!(thousand_separator(-1000), "-1.000");
+        assert_eq!(thousand_separator(-1234567), "-1.234.567");
+    }
+
+    #[test]
+    fn extremes() {
+        assert_eq!(thousand_separator(i32::MAX), "2.147.483.647");
+        assert_eq!(thousand_separator(i32::MIN), "-2.147.483.648");
+    }
+}
