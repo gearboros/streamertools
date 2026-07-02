@@ -1,8 +1,9 @@
 use crate::sample_data::{prediction_five, prediction_ongoing, prediction_ten, prediction_two};
-use crate::style::{bold_text, thousand_separator};
+use crate::style::{bold_text, thousand_separator, twitch_tab};
 use crate::twitch_api::{
     cancel_prediction, create_prediction, end_prediction, lock_prediction,
-    CreatePredictionRequest, CreatePredictionResponseData, EndPredictionRequest, PollChoice, PredictionStatus,
+    CreatePredictionRequest, CreatePredictionResponseData, EndPredictionRequest, PollChoice, PredictionOutcome,
+    PredictionStatus,
 };
 use crate::{load_config, prediction, save_config, App, AppPhase, Message, BIG_SPACING, SPACING};
 use iced::widget::{
@@ -10,10 +11,11 @@ use iced::widget::{
     Column, Container, PickList, Text, TextInput,
 };
 use iced::{Center, Element, Length, Renderer, Task, Theme};
-use iced_aw::number_input;
+use iced_aw::{number_input, TabBar, TabLabel};
 use rand::prelude::SliceRandom;
 use rand::rng;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 #[derive(Default, Debug, Serialize, Deserialize, Clone)]
 #[serde(default)]
@@ -26,6 +28,8 @@ pub struct PredictionState {
     pub(crate) phase: Option<PredictionStatus>,
     #[serde(skip_serializing, skip_deserializing)]
     pub(crate) current_state: Option<CreatePredictionResponseData>,
+    #[serde(skip_serializing, skip_deserializing)]
+    pub(crate) active_tab: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -50,6 +54,7 @@ pub enum PredictionMessage {
     CancelPrediction,
     ResetPrediction,
     LoadSampleData(CreatePredictionResponseData),
+    TabSelected(usize),
 }
 
 fn get_state_view(state: &PredictionState) -> Element<'static, Message, Theme, Renderer> {
@@ -58,14 +63,14 @@ fn get_state_view(state: &PredictionState) -> Element<'static, Message, Theme, R
     } else if state.phase == Some(PredictionStatus::Active) {
         column![
             Text::new("Voting active, currently at:"),
-            get_points_distribution(&state.current_state)
+            get_points_distribution(&state.current_state, state.active_tab)
         ]
         .spacing(SPACING)
         .into()
     } else if state.phase == Some(PredictionStatus::Locked) {
         column![
             Text::new("Voting closed, prediction active."),
-            get_points_distribution(&state.current_state)
+            get_points_distribution(&state.current_state, state.active_tab)
         ]
         .spacing(SPACING)
         .into()
@@ -82,12 +87,19 @@ fn get_state_view(state: &PredictionState) -> Element<'static, Message, Theme, R
             .iter()
             .find(|x| x.id == winner_id)
             .expect("Should have winner here");
+        let total_points = current.outcomes.iter().map(|o| o.channel_points).sum::<i32>();
+        let ratio = if winner.channel_points == 0 {
+            0f64
+        } else {
+            total_points as f64 / winner.channel_points as f64
+        };
         column![
             row![
                 Text::new("Prediction resolved, Winner: "),
                 bold_text(winner.title.clone()),
+                Text::new(format!(" ({ratio:.2}x)")),
             ],
-            get_points_distribution(&state.current_state)
+            get_points_distribution(&state.current_state, state.active_tab)
         ]
         .spacing(SPACING)
         .into()
@@ -98,10 +110,12 @@ fn get_state_view(state: &PredictionState) -> Element<'static, Message, Theme, R
 
 fn get_points_distribution(
     state: &Option<CreatePredictionResponseData>,
+    active_tab: usize,
 ) -> Element<'static, Message, Theme, Renderer> {
     let Some(state) = state.clone() else {
         return Text::new("No Prediction Active").into();
     };
+    let resolved = state.status == PredictionStatus::Resolved;
     let total_points = state.outcomes.iter().map(|o| o.channel_points).sum::<i32>();
     let total_users = state.outcomes.iter().map(|o| o.users).sum::<i32>();
 
@@ -112,27 +126,63 @@ fn get_points_distribution(
     let mut point_col: Column<_> = column![bold_text("Points".to_string())].spacing(SPACING);
     let mut user_col: Column<_> = column![bold_text("Users".to_string())].spacing(SPACING);
 
-    for o in &by_points {
-        let user_percent = if total_users == 0 {
-            0f64
-        } else {
-            (o.users as f64) / (total_users as f64) * 100.0
-        };
-        let point_percent = if total_points == 0 {
-            0f64
-        } else {
-            (o.channel_points as f64) / (total_points as f64) * 100.0
-        };
-        title_col = title_col.push(text(format!("• {}", o.title)));
+    let mut tab_bar = TabBar::new(|i| Message::Prediction(PredictionMessage::TabSelected(i)));
+    tab_bar = tab_bar.style(twitch_tab);
+    let mut tab_content = HashMap::new();
+
+    for (idx, o) in by_points.into_iter().enumerate() {
+        let (user_percent, point_percent) = get_percentages(total_points, total_users, &o);
+        title_col = title_col.push(text(format!("• {}", o.title.clone())));
         point_col = point_col.push(text(format!(
             "{} points, {:.2}%",
             thousand_separator(o.channel_points),
             point_percent
         )));
         user_col = user_col.push(text(format!("{} users, {:.2}%", o.users, user_percent)));
+
+        tab_bar = tab_bar.push(idx, TabLabel::Text(o.title.clone()));
+        let lines = o
+            .top_predictors
+            .unwrap_or_default()
+            .into_iter()
+            .map(|d| {
+                let mut line = format!(
+                    "• {} — {} points",
+                    d.user_name,
+                    thousand_separator(d.channel_points_used)
+                );
+                if resolved && d.channel_points_won > 0 {
+                    line.push_str(&format!(
+                        ", won {}",
+                        thousand_separator(d.channel_points_won)
+                    ));
+                }
+                line
+            })
+            .collect::<Vec<_>>();
+        tab_content.insert(idx, lines);
     }
 
     let grid = row![title_col, point_col, user_col].spacing(BIG_SPACING);
+
+    let selected = if tab_content.contains_key(&active_tab) {
+        active_tab
+    } else {
+        0
+    };
+    tab_bar = tab_bar.set_active_tab(&selected);
+
+    let mut content_col: Column<_> = column![].spacing(SPACING);
+    match tab_content.get(&selected) {
+        Some(lines) if !lines.is_empty() => {
+            for line in lines {
+                content_col = content_col.push(text(line.clone()));
+            }
+        }
+        _ => {
+            content_col = content_col.push(text("No predictors yet"));
+        }
+    }
 
     container(
         column![
@@ -142,10 +192,26 @@ fn get_points_distribution(
                 total_users
             )),
             grid,
+            tab_bar,
+            content_col,
         ]
         .spacing(SPACING),
     )
     .into()
+}
+
+fn get_percentages(total_points: i32, total_users: i32, o: &PredictionOutcome) -> (f64, f64) {
+    let user_percent = if total_users == 0 {
+        0f64
+    } else {
+        (o.users as f64) / (total_users as f64) * 100.0
+    };
+    let point_percent = if total_points == 0 {
+        0f64
+    } else {
+        (o.channel_points as f64) / (total_points as f64) * 100.0
+    };
+    (user_percent, point_percent)
 }
 
 impl App {
@@ -320,6 +386,10 @@ impl App {
             LoadSampleData(data) => {
                 self.prediction_state.phase = Some(data.status.clone());
                 self.prediction_state.current_state = Some(data);
+                Task::none()
+            }
+            TabSelected(idx) => {
+                self.prediction_state.active_tab = idx;
                 Task::none()
             }
         }

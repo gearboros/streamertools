@@ -3,9 +3,19 @@
 #![allow(dead_code)]
 
 use crate::twitch_api::{
-    CreatePredictionResponseData, PollChoiceState, PollPhase, PollStateData, PredictionOutcome,
-    PredictionStatus,
+    CreatePredictionResponseData, PollChoiceState, PollPhase, PollStateData, Predictor,
+    PredictionOutcome, PredictionStatus,
 };
+
+fn predictor(user_name: &str, channel_points_used: i32, channel_points_won: i32) -> Predictor {
+    Predictor {
+        user_id: format!("id-{user_name}"),
+        user_login: user_name.to_lowercase(),
+        user_name: user_name.to_string(),
+        channel_points_used,
+        channel_points_won,
+    }
+}
 
 fn choice(id: &str, title: &str, votes: i32, channel_point_votes: i32) -> PollChoiceState {
     PollChoiceState {
@@ -79,7 +89,11 @@ fn outcome(
         title: title.to_string(),
         users,
         channel_points,
-        top_predictors: None,
+        top_predictors: Some(vec![
+            predictor("Alice", 12_000, 18_000),
+            predictor("Bob", 8_500, 12_750),
+            predictor("Carol", 3_000, 4_500),
+        ]),
         color: color.to_string(),
     }
 }

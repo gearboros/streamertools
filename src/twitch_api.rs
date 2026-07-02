@@ -102,11 +102,11 @@ pub struct CreatePredictionRequest {
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct Predictor {
-    user_id: String,
-    user_login: String,
-    user_name: String,
-    channel_points_used: i32,
-    channel_points_won: i32,
+    pub user_id: String,
+    pub user_login: String,
+    pub user_name: String,
+    pub channel_points_used: i32,
+    pub channel_points_won: i32,
 }
 
 #[derive(Deserialize, Debug, Clone)]
