@@ -17,12 +17,12 @@ fn predictor(user_name: &str, channel_points_used: i32, channel_points_won: i32)
     }
 }
 
-fn choice(id: &str, title: &str, votes: i32, channel_point_votes: i32) -> PollChoiceState {
+fn choice(id: &str, title: &str, votes: i32, channel_points_votes: i32) -> PollChoiceState {
     PollChoiceState {
         id: id.to_string(),
         title: title.to_string(),
         votes,
-        channel_point_votes,
+        channel_points_votes,
     }
 }
 

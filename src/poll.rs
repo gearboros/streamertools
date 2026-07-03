@@ -349,7 +349,7 @@ fn get_votes_result(
     let total_point_votes = state
         .choices
         .iter()
-        .map(|c| c.channel_point_votes)
+        .map(|c| c.channel_points_votes)
         .sum::<i32>();
 
     let mut by_votes = state.choices.clone();
@@ -374,7 +374,7 @@ fn get_votes_result(
         let point_vote_percent = if total_point_votes == 0 {
             0f64
         } else {
-            (o.channel_point_votes as f64) / (total_point_votes as f64) * 100.0
+            (o.channel_points_votes as f64) / (total_point_votes as f64) * 100.0
         };
         title_col = title_col.push(text(format!("• {}", o.title)));
         votes_col = votes_col.push(text(format!("{} votes, {:.2}%", o.votes, vote_percent)));
@@ -385,9 +385,9 @@ fn get_votes_result(
         )));
         point_col = point_col.push(text(format!(
             "{} votes, {:.2}% ({} points)",
-            o.channel_point_votes,
+            o.channel_points_votes,
             point_vote_percent,
-            thousand_separator(o.channel_point_votes * (cost as i32))
+            thousand_separator(o.channel_points_votes * (cost as i32))
         )));
     }
 
@@ -425,7 +425,7 @@ fn get_winners(state: &PollStateData) -> (PollChoiceState, PollChoiceState, Poll
     let point_winner = state
         .choices
         .iter()
-        .max_by_key(|c| c.channel_point_votes)
+        .max_by_key(|c| c.channel_points_votes)
         .expect("No empty choices")
         .clone();
 

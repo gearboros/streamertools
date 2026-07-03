@@ -259,12 +259,12 @@ pub struct PollChoiceState {
     pub id: String,
     pub title: String,
     pub votes: i32,
-    pub channel_point_votes: i32,
+    pub channel_points_votes: i32,
 }
 
 impl PollChoiceState {
     pub fn popular_votes(&self) -> i32 {
-        self.votes - self.channel_point_votes
+        self.votes - self.channel_points_votes
     }
 }
 
