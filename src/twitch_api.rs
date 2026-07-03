@@ -123,10 +123,6 @@ pub struct CreatePredictionResponseData {
     pub winning_outcome_id: Option<String>,
     pub outcomes: Vec<PredictionOutcome>,
     pub status: PredictionStatus,
-    pub _broadcaster_id: String,
-    pub _created_at: Option<String>,
-    pub _ended_at: Option<String>,
-    pub _locked_at: Option<String>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -211,13 +207,15 @@ async fn set_prediction_state(
     access_token: &str,
     status: PredictionStatus,
 ) -> Result<(), String> {
-    let uri = format!(
-        "https://api.twitch.tv/helix/predictions?broadcaster_id={}&id={}&status={}&winning_outcome_id={}",
+    let mut uri = format!(
+        "https://api.twitch.tv/helix/predictions?broadcaster_id={}&id={}&status={}",
         request.broadcaster_id,
         request.prediction_id,
         status.as_str(),
-        request.outcome_id
     );
+    if !request.outcome_id.is_empty() {
+        uri = format!("{}&winning_outcome_id={}", uri, request.outcome_id);
+    }
     let builder = client.patch(uri);
     let resp = add_headers_and_send(access_token, builder).await?;
 
