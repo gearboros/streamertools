@@ -24,7 +24,7 @@ use serde::Serialize;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 use tracing_appender::rolling::Rotation;
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 use twitch_api::*;
@@ -140,9 +140,20 @@ impl App {
             }
             Message::PredictionTick => {
                 if self.polling == AppPolling::Prediction {
-                    let broadcaster_id = self.broadcaster_id.clone().unwrap();
-                    let pred_id = self.prediction_state.current_state.clone().unwrap().id;
-                    let token = self.access_token.clone().unwrap();
+                    let broadcaster_id = self
+                        .broadcaster_id
+                        .clone()
+                        .expect("Should have broadcaster Id here");
+                    let pred_id = self
+                        .prediction_state
+                        .current_state
+                        .clone()
+                        .expect("Should have prediction state.")
+                        .id;
+                    let token = self
+                        .access_token
+                        .clone()
+                        .expect("Should have access token.");
                     let client = self.client.clone();
                     Task::perform(
                         async move {
@@ -154,24 +165,23 @@ impl App {
                     Task::none()
                 }
             }
-            Message::PredictionPolled(resp) => {
-                match resp {
-                    Ok(r) => {
-                        self.prediction_state.phase = Some(r.status.clone());
-                        if r.status == PredictionStatus::Canceled
-                            || r.status == PredictionStatus::Resolved
-                        {
-                            self.polling = AppPolling::Not;
-                        }
-                        self.prediction_state.current_state = Some(r);
-                    }
-                    Err(err) => {
-                        error!("{:?}", err);
+            Message::PredictionPolled(resp) => match resp {
+                Ok(r) => {
+                    self.prediction_state.phase = Some(r.status.clone());
+                    if r.status == PredictionStatus::Canceled
+                        || r.status == PredictionStatus::Resolved
+                    {
                         self.polling = AppPolling::Not;
                     }
+                    self.prediction_state.current_state = Some(r);
+                    Task::none()
                 }
-                Task::none()
-            }
+                Err(err) => {
+                    error!("{:?}", err);
+                    self.polling = AppPolling::Not;
+                    Task::done(Message::Error(err.to_string()))
+                }
+            },
             Message::PollTick => {
                 if self.polling == AppPolling::Poll {
                     let broadcaster_id = self.broadcaster_id.clone().unwrap();
@@ -190,7 +200,7 @@ impl App {
                 match resp {
                     Ok(r) => {
                         self.poll_state.phase = Some(r.status.clone());
-                        if r.status == PollPhase::Archived || r.status == PollPhase::Completed {
+                        if r.status != PollPhase::Active {
                             self.polling = AppPolling::Not;
                         }
                         self.poll_state.current_state = Some(r);
@@ -397,8 +407,8 @@ fn main() -> iced::Result {
 
 impl App {
     fn new(path: &Path, debug: bool) -> (Self, Task<Message>) {
-        let polls = Self::load_files(path.join("polls"));
-        let preds = Self::load_files(path.join("predictions"));
+        let polls = Self::load_files(path.join("polls")).unwrap_or_default();
+        let preds = Self::load_files(path.join("predictions")).unwrap_or_default();
 
         let poll_state = PollState {
             options: vec![String::new(), String::new()],
@@ -445,19 +455,21 @@ impl App {
         )
     }
 
-    fn load_files(path: PathBuf) -> Vec<String> {
-        fs::read_dir(path)
-            .unwrap()
-            .map(|r| {
-                r.unwrap()
-                    .path()
-                    .file_stem()
-                    .unwrap()
-                    .to_str()
-                    .unwrap()
-                    .to_string()
+    fn load_files(path: PathBuf) -> Result<Vec<String>, String> {
+        let entries = fs::read_dir(&path).map_err(|e| {
+            warn!("Could not read config dir {path:?}: {e}");
+            format!("Could not read config dir {}: {e}", path.display())
+        })?;
+
+        Ok(entries
+            .filter_map(|entry| {
+                let path = entry.ok()?.path();
+                if path.extension().and_then(|e| e.to_str()) != Some("json") {
+                    return None;
+                }
+                Some(path.file_stem()?.to_str()?.to_string())
             })
-            .collect::<Vec<String>>()
+            .collect())
     }
 }
 
@@ -468,7 +480,7 @@ fn save_config<T: Serialize>(
     state: &T,
 ) -> Result<(), String> {
     let json = serde_json::to_string(state).map_err(|e| e.to_string())?;
-    fs::write(root.join(subdir).join(format!("{name}.json")), json).unwrap();
+    fs::write(root.join(subdir).join(format!("{name}.json")), json).map_err(|e| e.to_string())?;
     Ok(())
 }
 

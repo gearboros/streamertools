@@ -2,7 +2,7 @@ use crate::CLIENT_ID;
 use keyring::Entry;
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::PathBuf;
+use std::path::Path;
 use tracing::{error, info};
 
 #[derive(Serialize, Deserialize)]
@@ -166,7 +166,7 @@ fn save_tokens_to_keyring(access: &str, refresh: &str) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
-pub fn save_tokens_to_file(access: &str, refresh: &str, path: &PathBuf) -> Result<(), String> {
+pub fn save_tokens_to_file(access: &str, refresh: &str, path: &Path) -> Result<(), String> {
     let tokens = StoredTokens {
         access_token: access.to_string(),
         refresh_token: refresh.to_string(),
@@ -187,7 +187,7 @@ pub fn save_tokens_to_file(access: &str, refresh: &str, path: &PathBuf) -> Resul
 }
 
 /// loads token from OS provided keyring, tries to load from file if that fails.
-pub fn load_tokens(path: &PathBuf) -> Option<(String, String)> {
+pub fn load_tokens(path: &Path) -> Option<(String, String)> {
     // Try keyring first
     if let Some(tokens) = load_tokens_from_keyring() {
         info!("Tokens loaded from keyring");
@@ -216,7 +216,7 @@ fn load_tokens_from_keyring() -> Option<(String, String)> {
     Some((access, refresh))
 }
 
-fn load_tokens_from_file(path: &PathBuf) -> Option<(String, String)> {
+fn load_tokens_from_file(path: &Path) -> Option<(String, String)> {
     let file_path = path.join("tokens.json");
     let json = fs::read_to_string(file_path).ok()?;
     let tokens: StoredTokens = serde_json::from_str(&json).ok()?;

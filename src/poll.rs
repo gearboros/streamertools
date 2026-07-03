@@ -25,26 +25,31 @@ impl App {
                 Task::none()
             }
             Submit => {
-                let token = self.access_token.clone().unwrap_or_default();
-                let request = CreatePollRequest {
-                    broadcaster_id: self.broadcaster_id.clone().unwrap_or_default(),
-                    title: self.poll_state.title.clone(),
-                    choices: self
-                        .poll_state
-                        .options
-                        .clone()
-                        .iter()
-                        .map(|o| PollChoice { title: o.clone() })
-                        .collect(),
-                    duration: self.poll_state.duration * 60,
-                    channel_points_voting_enabled: self.poll_state.uses_channel_points,
-                    channel_points_per_vote: self.poll_state.channel_point_cost,
-                };
-                let client = self.client.clone();
-                Task::perform(
-                    async move { create_poll(&client, &token, request).await },
-                    |r| Message::Poll(PollCreated(r)),
-                )
+                let access_token = self.access_token.clone();
+                if let Some(token) = access_token {
+                    let request = CreatePollRequest {
+                        broadcaster_id: self.broadcaster_id.clone().unwrap_or_default(),
+                        title: self.poll_state.title.clone(),
+                        choices: self
+                            .poll_state
+                            .options
+                            .iter()
+                            .map(|o| PollChoice { title: o.clone() })
+                            .collect(),
+                        duration: self.poll_state.duration * 60,
+                        channel_points_voting_enabled: self.poll_state.uses_channel_points,
+                        channel_points_per_vote: self.poll_state.channel_point_cost,
+                    };
+                    let client = self.client.clone();
+                    Task::perform(
+                        async move { create_poll(&client, &token, request).await },
+                        |r| Message::Poll(PollCreated(r)),
+                    )
+                } else {
+                    Task::done(Message::Error(
+                        "Missing Auth token! Try to re-authenticate".to_string(),
+                    ))
+                }
             }
             OptionChanged(idx, val) => {
                 if let Some(o) = self.poll_state.options.get_mut(idx) {
@@ -71,7 +76,7 @@ impl App {
                 }
                 Err(e) => {
                     self.poll_state.phase = None;
-                    Task::done(Message::Error(e.to_string()))
+                    Task::done(Message::Error(e))
                 }
             },
             DurationChange(d) => {
@@ -99,6 +104,7 @@ impl App {
             PollEnded(r) => match r {
                 Ok(()) => {
                     self.polling = Not;
+                    self.poll_state.phase = None;
                     self.poll_state.current_state = None;
                     Task::none()
                 }
@@ -113,7 +119,10 @@ impl App {
                 ) {
                     return Task::done(Message::Error(e.to_string()));
                 };
-                self.polls = Self::load_files(self.config_path.join("polls"));
+                self.polls = match Self::load_files(self.config_path.join("polls")) {
+                    Ok(polls) => polls,
+                    Err(e) => return Task::done(Message::Error(e)),
+                };
                 self.selected_poll = Some(self.poll_state.name.clone());
                 self.poll_loaded = true;
                 Task::none()
@@ -427,9 +436,9 @@ pub struct PollState {
     pub duration: usize,
     pub uses_channel_points: bool,
     pub channel_point_cost: usize,
-    #[serde(skip_serializing, skip_deserializing)]
+    #[serde(skip)]
     pub phase: Option<PollPhase>,
-    #[serde(skip_serializing, skip_deserializing)]
+    #[serde(skip)]
     pub current_state: Option<PollStateData>,
     pub name: String,
 }

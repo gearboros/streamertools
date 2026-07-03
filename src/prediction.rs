@@ -26,11 +26,11 @@ pub struct PredictionState {
     pub options: Vec<String>,
     pub duration: usize,
     pub name: String,
-    #[serde(skip_serializing, skip_deserializing)]
+    #[serde(skip)]
     pub phase: Option<PredictionStatus>,
-    #[serde(skip_serializing, skip_deserializing)]
+    #[serde(skip)]
     pub current_state: Option<CreatePredictionResponseData>,
-    #[serde(skip_serializing, skip_deserializing)]
+    #[serde(skip)]
     pub active_tab: usize,
 }
 
@@ -241,7 +241,10 @@ impl App {
                 ) {
                     return Task::done(Message::Error(e.to_string()));
                 };
-                self.predictions = Self::load_files(self.config_path.join("predictions"));
+                self.predictions = match Self::load_files(self.config_path.join("predictions")) {
+                    Ok(predictions) => predictions,
+                    Err(e) => return Task::done(Message::Error(e)),
+                };
                 self.selected_prediction = Some(self.prediction_state.name.clone());
                 self.prediction_loaded = true;
                 Task::none()
@@ -281,24 +284,29 @@ impl App {
                 Task::none()
             }
             Submit => {
-                let token = self.access_token.clone().unwrap_or_default();
-                let request = CreatePredictionRequest {
-                    broadcaster_id: self.broadcaster_id.clone().unwrap_or_default(),
-                    title: self.prediction_state.title.clone(),
-                    outcomes: self
-                        .prediction_state
-                        .options
-                        .clone()
-                        .iter()
-                        .map(|o| PollChoice { title: o.clone() })
-                        .collect(),
-                    prediction_window: self.prediction_state.duration * 60,
-                };
-                let client = self.client.clone();
-                Task::perform(
-                    async move { create_prediction(&client, &token, request).await },
-                    |r| Message::Prediction(PredictionCreated(r)),
-                )
+                let access_token = self.access_token.clone();
+                if let Some(token) = access_token {
+                    let request = CreatePredictionRequest {
+                        broadcaster_id: self.broadcaster_id.clone().unwrap_or_default(),
+                        title: self.prediction_state.title.clone(),
+                        outcomes: self
+                            .prediction_state
+                            .options
+                            .iter()
+                            .map(|o| PollChoice { title: o.clone() })
+                            .collect(),
+                        prediction_window: self.prediction_state.duration * 60,
+                    };
+                    let client = self.client.clone();
+                    Task::perform(
+                        async move { create_prediction(&client, &token, request).await },
+                        |r| Message::Prediction(PredictionCreated(r)),
+                    )
+                } else {
+                    Task::done(Message::Error(
+                        "Missing Auth token! Try to re-authenticate".to_string(),
+                    ))
+                }
             }
             PredictionCreated(r) => match r {
                 Ok(data) => {
@@ -309,7 +317,7 @@ impl App {
                 }
                 Err(e) => {
                     self.prediction_state.phase = None;
-                    Task::done(Message::Error(e.to_string()))
+                    Task::done(Message::Error(e))
                 }
             },
             DurationChange(d) => {
@@ -338,7 +346,6 @@ impl App {
             }
             PredictionEnded(r) => match r {
                 Ok(()) => {
-                    self.prediction_state.current_state = None;
                     self.prediction_state.phase = Some(PredictionStatus::Resolved);
                     Task::none()
                 }
@@ -478,20 +485,16 @@ impl App {
                 }
                 opt_col = opt_col.push(row![rem_btn, input].spacing(SPACING));
             }
-        } else {
-            if state.current_state.is_some() {
-                for option in state.current_state.clone().unwrap().outcomes.iter() {
-                    let text = Text::new(option.title.clone()).width(Length::Fill);
-                    let mut win_btn = button("Winner!");
-                    if state.current_state.is_some()
-                        && state.phase == Some(PredictionStatus::Locked)
-                    {
-                        win_btn = win_btn.on_press(Message::Prediction(
-                            PredictionMessage::WinnerChosen(option.id.clone()),
-                        ));
-                    }
-                    opt_col = opt_col.push(row![text, win_btn].align_y(Center).spacing(SPACING));
+        } else if state.current_state.is_some() {
+            for option in state.current_state.clone().unwrap().outcomes.iter() {
+                let text = Text::new(option.title.clone()).width(Length::Fill);
+                let mut win_btn = button("Winner!");
+                if state.current_state.is_some() && state.phase == Some(PredictionStatus::Locked) {
+                    win_btn = win_btn.on_press(Message::Prediction(
+                        PredictionMessage::WinnerChosen(option.id.clone()),
+                    ));
                 }
+                opt_col = opt_col.push(row![text, win_btn].align_y(Center).spacing(SPACING));
             }
         }
 

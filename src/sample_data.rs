@@ -97,10 +97,6 @@ fn prediction(outcomes: Vec<PredictionOutcome>) -> CreatePredictionResponseData 
         winning_outcome_id: Some("1".to_string()),
         outcomes,
         status: PredictionStatus::Resolved,
-        _broadcaster_id: "test-broadcaster".to_string(),
-        _created_at: None,
-        _ended_at: None,
-        _locked_at: None,
     }
 }
 
@@ -121,10 +117,6 @@ pub fn prediction_ongoing() -> CreatePredictionResponseData {
         winning_outcome_id: Some("1".to_string()),
         outcomes,
         status: PredictionStatus::Active,
-        _broadcaster_id: "test-broadcaster".to_string(),
-        _created_at: None,
-        _ended_at: None,
-        _locked_at: None,
     }
 }
 
