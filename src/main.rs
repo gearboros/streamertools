@@ -58,11 +58,11 @@ impl TabId {
 }
 
 #[derive(Default, Debug, Eq, PartialEq)]
-enum AppPhase {
+enum AppPolling {
     #[default]
-    NoPolling,
-    PredictionPolling,
-    PollPolling,
+    Not,
+    Prediction,
+    Poll,
 }
 
 #[derive(Default, Debug)]
@@ -76,7 +76,7 @@ struct App {
     // Device code flow UI state
     device_code_info: Option<DeviceCodeInfo>,
     auth_in_progress: bool,
-    phase: AppPhase,
+    polling: AppPolling,
     active_tab: TabId,
     err: String,
     confirm: Option<String>,
@@ -138,7 +138,7 @@ impl App {
                 Task::none()
             }
             Message::PredictionTick => {
-                if self.phase == AppPhase::PredictionPolling {
+                if self.polling == AppPolling::Prediction {
                     let broadcaster_id = self.broadcaster_id.clone().unwrap();
                     let pred_id = self.prediction_state.current_state.clone().unwrap().id;
                     let token = self.access_token.clone().unwrap();
@@ -147,7 +147,7 @@ impl App {
                         async move {
                             check_prediction(&client, &broadcaster_id, &pred_id, &token).await
                         },
-                        |r| Message::PredictionPolled(r),
+                        Message::PredictionPolled,
                     )
                 } else {
                     Task::none()
@@ -160,26 +160,26 @@ impl App {
                         if r.status == PredictionStatus::Canceled
                             || r.status == PredictionStatus::Resolved
                         {
-                            self.phase = AppPhase::NoPolling;
+                            self.polling = AppPolling::Not;
                         }
                         self.prediction_state.current_state = Some(r);
                     }
                     Err(err) => {
                         error!("{:?}", err);
-                        self.phase = AppPhase::NoPolling;
+                        self.polling = AppPolling::Not;
                     }
                 }
                 Task::none()
             }
             Message::PollTick => {
-                if self.phase == AppPhase::PollPolling {
+                if self.polling == AppPolling::Poll {
                     let broadcaster_id = self.broadcaster_id.clone().unwrap();
                     let poll_id = self.poll_state.current_state.clone().unwrap().id.clone();
                     let token = self.access_token.clone().unwrap();
                     let client = self.client.clone();
                     Task::perform(
                         async move { check_poll(&client, &broadcaster_id, &poll_id, &token).await },
-                        |r| Message::PollPolled(r),
+                        Message::PollPolled,
                     )
                 } else {
                     Task::none()
@@ -190,13 +190,13 @@ impl App {
                     Ok(r) => {
                         self.poll_state.phase = Some(r.status.clone());
                         if r.status == PollPhase::Archived || r.status == PollPhase::Completed {
-                            self.phase = AppPhase::NoPolling;
+                            self.polling = AppPolling::Not;
                         }
                         self.poll_state.current_state = Some(r);
                     }
                     Err(err) => {
                         error!("{:?}", err);
-                        self.phase = AppPhase::NoPolling;
+                        self.polling = AppPolling::Not;
                     }
                 }
                 Task::none()
@@ -341,12 +341,12 @@ impl App {
 fn subscription(app: &App) -> Subscription<Message> {
     let keys = keyboard::listen().map(Message::Keyboard);
 
-    let polling = match app.phase {
-        AppPhase::PredictionPolling => {
+    let polling = match app.polling {
+        AppPolling::Prediction => {
             time::every(Duration::from_secs(1)).map(|_| Message::PredictionTick)
         }
-        AppPhase::PollPolling => time::every(Duration::from_secs(1)).map(|_| Message::PollTick),
-        AppPhase::NoPolling => Subscription::none(),
+        AppPolling::Poll => time::every(Duration::from_secs(1)).map(|_| Message::PollTick),
+        AppPolling::Not => Subscription::none(),
     };
     Subscription::batch([keys, polling])
 }

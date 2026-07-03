@@ -102,8 +102,6 @@ pub struct CreatePredictionRequest {
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct Predictor {
-    pub user_id: String,
-    pub user_login: String,
     pub user_name: String,
     pub channel_points_used: i32,
     pub channel_points_won: i32,
@@ -122,13 +120,13 @@ pub struct PredictionOutcome {
 #[derive(Deserialize, Debug, Clone)]
 pub struct CreatePredictionResponseData {
     pub id: String,
-    pub broadcaster_id: String,
     pub winning_outcome_id: Option<String>,
     pub outcomes: Vec<PredictionOutcome>,
     pub status: PredictionStatus,
-    pub created_at: Option<String>,
-    pub ended_at: Option<String>,
-    pub locked_at: Option<String>,
+    pub _broadcaster_id: String,
+    pub _created_at: Option<String>,
+    pub _ended_at: Option<String>,
+    pub _locked_at: Option<String>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -280,11 +278,8 @@ pub enum PollPhase {
 #[derive(Deserialize, Debug, Clone)]
 pub struct PollStateData {
     pub id: String,
-    pub broadcaster_id: String,
-    pub winning_outcome_id: Option<String>,
     pub choices: Vec<PollChoiceState>,
     pub status: PollPhase,
-    pub started_at: Option<String>,
 }
 
 #[derive(Deserialize, Debug)]

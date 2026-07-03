@@ -5,7 +5,7 @@ use crate::twitch_api::{
     CreatePredictionRequest, CreatePredictionResponseData, EndPredictionRequest, PollChoice, PredictionOutcome,
     PredictionStatus,
 };
-use crate::{load_config, prediction, save_config, App, AppPhase, Message, BIG_SPACING, SPACING};
+use crate::{load_config, prediction, save_config, App, AppPolling, Message, BIG_SPACING, SPACING};
 use iced::widget::{
     button, column, container, pick_list, row, rule, text, text_input, tooltip, Button,
     Column, Container, PickList, Text, TextInput,
@@ -87,7 +87,11 @@ fn get_state_view(state: &PredictionState) -> Element<'static, Message, Theme, R
             .iter()
             .find(|x| x.id == winner_id)
             .expect("Should have winner here");
-        let total_points = current.outcomes.iter().map(|o| o.channel_points).sum::<i32>();
+        let total_points = current
+            .outcomes
+            .iter()
+            .map(|o| o.channel_points)
+            .sum::<i32>();
         let ratio = if winner.channel_points == 0 {
             0f64
         } else {
@@ -294,7 +298,7 @@ impl App {
                 Ok(data) => {
                     self.prediction_state.current_state = Some(data);
                     self.prediction_state.phase = Some(PredictionStatus::Active);
-                    self.phase = AppPhase::PredictionPolling;
+                    self.polling = AppPolling::Prediction;
                     Task::none()
                 }
                 Err(e) => {
@@ -307,7 +311,7 @@ impl App {
                 Task::none()
             }
             WinnerChosen(id) => {
-                self.phase = AppPhase::NoPolling;
+                self.polling = AppPolling::Not;
                 let token = self.access_token.clone().unwrap_or_default();
                 let request = EndPredictionRequest {
                     outcome_id: id,
@@ -333,7 +337,7 @@ impl App {
                     Task::none()
                 }
                 Err(e) => {
-                    self.phase = AppPhase::PredictionPolling;
+                    self.polling = AppPolling::Prediction;
                     Task::done(Message::Error(e))
                 }
             },
@@ -396,7 +400,7 @@ impl App {
     }
 
     fn create_end_prediction_request(&mut self) -> EndPredictionRequest {
-        let request = EndPredictionRequest {
+        EndPredictionRequest {
             outcome_id: String::new(),
             broadcaster_id: self.broadcaster_id.clone().unwrap_or_default(),
             prediction_id: self
@@ -406,8 +410,7 @@ impl App {
                 .unwrap()
                 .id
                 .clone(),
-        };
-        request
+        }
     }
 
     pub(crate) fn get_prediction_tab_content(&self) -> Element<'static, Message, Theme, Renderer> {
@@ -427,8 +430,8 @@ impl App {
             .on_press(Message::Prediction(PredictionMessage::NewConfig))
             .style(crate::style::neutral_button);
 
-        let can_save = self.prediction_loaded
-            || (!self.prediction_loaded && !self.predictions.contains(&self.prediction_state.name));
+        let can_save =
+            self.prediction_loaded || !self.predictions.contains(&self.prediction_state.name);
 
         let save_btn = button("Save").style(crate::style::neutral_button);
         let save_elem: Element<'_, Message> = if can_save {
@@ -452,7 +455,7 @@ impl App {
             .on_input(|r| Message::Prediction(PredictionMessage::TitleChanged(r)));
         let mut opt_col: Column<_> = iced::widget::column![].spacing(SPACING);
 
-        if state.phase == None {
+        if state.phase.is_none() {
             for (idx, option) in state.options.iter().enumerate() {
                 let input =
                     text_input(format!("Option {}", idx + 1).as_str(), option).on_input(move |s| {
@@ -461,7 +464,7 @@ impl App {
                 let mut rem_btn = button(text("-").center())
                     .width(30)
                     .style(crate::style::red_button);
-                if state.options.len() > 2 && state.phase == None {
+                if state.options.len() > 2 && state.phase.is_none() {
                     rem_btn =
                         rem_btn.on_press(Message::Prediction(PredictionMessage::RemoveOption(idx)));
                 }
@@ -487,7 +490,7 @@ impl App {
         let mut add_btn = button(text("+").center()).width(30);
         let mut switch_btn = button("Switch Options");
         let mut shuffle_btn = button("Shuffle Options");
-        if state.phase == None {
+        if state.phase.is_none() {
             add_btn = add_btn.on_press(Message::Prediction(PredictionMessage::AddOption));
             switch_btn = switch_btn.on_press(Message::Prediction(PredictionMessage::SwitchOptions));
             shuffle_btn =
@@ -511,7 +514,7 @@ impl App {
         let duration_row = row![duration_text, duration_inp].align_y(Center);
 
         let mut submit_btn = button("Submit");
-        if state.phase == None {
+        if state.phase.is_none() {
             submit_btn = submit_btn.on_press(Message::Prediction(PredictionMessage::Submit));
         }
         let mut lock_btn = button("Lock");

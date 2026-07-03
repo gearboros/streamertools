@@ -6,8 +6,8 @@ use crate::style::{bold_text, thousand_separator};
 use crate::twitch_api::{
     create_poll, end_poll, CreatePollRequest, PollChoice, PollChoiceState, PollPhase, PollStateData,
 };
-use crate::AppPhase::NoPolling;
-use crate::{load_config, save_config, App, AppPhase, Message, BIG_SPACING, SPACING};
+use crate::AppPolling::Not;
+use crate::{load_config, save_config, App, AppPolling, Message, BIG_SPACING, SPACING};
 use iced::widget::{
     button, checkbox, column, container, pick_list, row, rule, text, text_input, tooltip,
     Button, Checkbox, Column, Container, PickList, Text, TextInput,
@@ -64,7 +64,7 @@ impl App {
             }
             PollCreated(r) => match r {
                 Ok(resp) => {
-                    self.phase = AppPhase::PollPolling;
+                    self.polling = AppPolling::Poll;
                     self.poll_state.current_state = Some(resp);
                     self.poll_state.phase = Some(PollPhase::Active);
                     Task::none()
@@ -98,7 +98,7 @@ impl App {
             }
             PollEnded(r) => match r {
                 Ok(()) => {
-                    self.phase = NoPolling;
+                    self.polling = Not;
                     self.poll_state.current_state = None;
                     Task::none()
                 }
@@ -159,8 +159,7 @@ impl App {
             .on_press(Message::Poll(PollMessage::NewConfig))
             .style(crate::style::neutral_button);
 
-        let can_save =
-            self.poll_loaded || (!self.poll_loaded && !self.polls.contains(&self.poll_state.name));
+        let can_save = self.poll_loaded || !self.polls.contains(&self.poll_state.name);
 
         let save_btn = button("Save").style(crate::style::neutral_button);
         let save_elem: Element<'_, Message> = if can_save {
@@ -313,10 +312,7 @@ fn get_state_view(state: &PollState) -> Element<'static, Message, Theme, Rendere
         } else {
             "Point vote winner: "
         };
-        let mut col = column![row![
-            Text::new(main_label),
-            bold_text(winner.title.clone())
-        ],];
+        let mut col = column![row![Text::new(main_label), bold_text(winner.title.clone())],];
         if winner.id != popular_winner.id {
             col = col.push(row![
                 Text::new(popular_label),

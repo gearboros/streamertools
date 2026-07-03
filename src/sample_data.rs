@@ -3,14 +3,12 @@
 #![allow(dead_code)]
 
 use crate::twitch_api::{
-    CreatePredictionResponseData, PollChoiceState, PollPhase, PollStateData, Predictor,
-    PredictionOutcome, PredictionStatus,
+    CreatePredictionResponseData, PollChoiceState, PollPhase, PollStateData, PredictionOutcome,
+    PredictionStatus, Predictor,
 };
 
 fn predictor(user_name: &str, channel_points_used: i32, channel_points_won: i32) -> Predictor {
     Predictor {
-        user_id: format!("id-{user_name}"),
-        user_login: user_name.to_lowercase(),
         user_name: user_name.to_string(),
         channel_points_used,
         channel_points_won,
@@ -29,11 +27,8 @@ fn choice(id: &str, title: &str, votes: i32, channel_points_votes: i32) -> PollC
 fn poll(choices: Vec<PollChoiceState>) -> PollStateData {
     PollStateData {
         id: "test-poll".to_string(),
-        broadcaster_id: "test-broadcaster".to_string(),
-        winning_outcome_id: Some("1".to_string()),
         choices,
         status: PollPhase::Completed,
-        started_at: None,
     }
 }
 
@@ -61,11 +56,8 @@ pub fn running_poll() -> PollStateData {
     ];
     PollStateData {
         id: "test-poll".to_string(),
-        broadcaster_id: "test-broadcaster".to_string(),
-        winning_outcome_id: None,
         choices,
         status: PollPhase::Active,
-        started_at: None,
     }
 }
 
@@ -101,13 +93,13 @@ fn outcome(
 fn prediction(outcomes: Vec<PredictionOutcome>) -> CreatePredictionResponseData {
     CreatePredictionResponseData {
         id: "test-prediction".to_string(),
-        broadcaster_id: "test-broadcaster".to_string(),
         winning_outcome_id: Some("1".to_string()),
         outcomes,
         status: PredictionStatus::Resolved,
-        created_at: None,
-        ended_at: None,
-        locked_at: None,
+        _broadcaster_id: "test-broadcaster".to_string(),
+        _created_at: None,
+        _ended_at: None,
+        _locked_at: None,
     }
 }
 
@@ -125,13 +117,13 @@ pub fn prediction_ongoing() -> CreatePredictionResponseData {
     ];
     CreatePredictionResponseData {
         id: "test-prediction".to_string(),
-        broadcaster_id: "test-broadcaster".to_string(),
         winning_outcome_id: Some("1".to_string()),
         outcomes,
         status: PredictionStatus::Active,
-        created_at: None,
-        ended_at: None,
-        locked_at: None,
+        _broadcaster_id: "test-broadcaster".to_string(),
+        _created_at: None,
+        _ended_at: None,
+        _locked_at: None,
     }
 }
 
