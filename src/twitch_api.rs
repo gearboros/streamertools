@@ -3,10 +3,11 @@ use reqwest::{RequestBuilder, Response};
 use serde::{Deserialize, Serialize};
 use tracing::error;
 
-#[derive(Deserialize, Debug, Clone, Eq, PartialEq)]
+#[derive(Deserialize, Debug, Default, Clone, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "UPPERCASE")]
 pub enum PredictionStatus {
     Resolved,
+    #[default]
     Active,
     Locked,
     Canceled,
@@ -75,7 +76,7 @@ pub async fn end_poll(
     broadcaster_id: &str,
     poll_id: &str,
     access_token: &str,
-) -> Result<(), String> {
+) -> Result<PollStateData, String> {
     let uri = format!(
         "https://api.twitch.tv/helix/polls?broadcaster_id={}&id={}&status=TERMINATED",
         broadcaster_id, poll_id
@@ -89,7 +90,7 @@ pub async fn end_poll(
         return Err(format!("Ending poll failed: {}", err_text));
     }
 
-    Ok(())
+    extract_poll_response(resp).await
 }
 
 #[derive(Serialize, Debug)]
@@ -100,14 +101,14 @@ pub struct CreatePredictionRequest {
     pub prediction_window: usize,
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone, Default, Eq, PartialEq)]
 pub struct Predictor {
     pub user_name: String,
     pub channel_points_used: i32,
     pub channel_points_won: i32,
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone, Default, Eq, PartialEq)]
 pub struct PredictionOutcome {
     pub id: String,
     pub title: String,
@@ -117,7 +118,7 @@ pub struct PredictionOutcome {
     pub color: String,
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone, Default, PartialEq, Eq)]
 pub struct CreatePredictionResponseData {
     pub id: String,
     pub winning_outcome_id: Option<String>,
@@ -175,7 +176,7 @@ pub async fn end_prediction(
     client: &reqwest::Client,
     request: EndPredictionRequest,
     access_token: &str,
-) -> Result<(), String> {
+) -> Result<CreatePredictionResponseData, String> {
     set_prediction_state(client, request, access_token, PredictionStatus::Resolved)
         .await
         .map_err(|e| e)
@@ -185,7 +186,7 @@ pub async fn lock_prediction(
     client: &reqwest::Client,
     request: EndPredictionRequest,
     access_token: &str,
-) -> Result<(), String> {
+) -> Result<CreatePredictionResponseData, String> {
     set_prediction_state(client, request, access_token, PredictionStatus::Locked)
         .await
         .map_err(|e| e)
@@ -195,7 +196,7 @@ pub async fn cancel_prediction(
     client: &reqwest::Client,
     request: EndPredictionRequest,
     access_token: &str,
-) -> Result<(), String> {
+) -> Result<CreatePredictionResponseData, String> {
     set_prediction_state(client, request, access_token, PredictionStatus::Canceled)
         .await
         .map_err(|e| e)
@@ -206,7 +207,7 @@ async fn set_prediction_state(
     request: EndPredictionRequest,
     access_token: &str,
     status: PredictionStatus,
-) -> Result<(), String> {
+) -> Result<CreatePredictionResponseData, String> {
     let mut uri = format!(
         "https://api.twitch.tv/helix/predictions?broadcaster_id={}&id={}&status={}",
         request.broadcaster_id,
@@ -225,7 +226,7 @@ async fn set_prediction_state(
         return Err(format!("Ending prediction failed: {}", err_text));
     }
 
-    Ok(())
+    extract_prediction_response(resp).await
 }
 
 pub async fn check_prediction(
@@ -250,7 +251,7 @@ pub async fn check_prediction(
     extract_prediction_response(resp).await
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Default, Serialize, Debug, Clone, Eq, PartialEq)]
 pub struct PollChoiceState {
     pub id: String,
     pub title: String,
@@ -264,16 +265,17 @@ impl PollChoiceState {
     }
 }
 
-#[derive(Deserialize, Debug, Clone, Eq, PartialEq)]
+#[derive(Deserialize, Serialize, Default, Debug, Clone, Eq, PartialEq)]
 #[serde(rename_all = "UPPERCASE")]
 pub enum PollPhase {
+    #[default]
     Active,
     Terminated,
     Archived,
     Completed,
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Default, Debug, Clone, Eq, PartialEq)]
 pub struct PollStateData {
     pub id: String,
     pub choices: Vec<PollChoiceState>,

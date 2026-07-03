@@ -1,4 +1,5 @@
 mod auth;
+mod config;
 mod poll;
 mod prediction;
 mod sample_data;
@@ -7,6 +8,9 @@ mod twitch_api;
 mod twitch_auth;
 mod widgets;
 
+use crate::config::ConfigList;
+use crate::poll::{PollRun, PollState, PollTab};
+use crate::prediction::{PredictionRun, PredictionState, PredictionTab};
 use crate::style::{twitch_button, twitch_tab};
 use crate::twitch_auth::*;
 use auth::AuthMessage;
@@ -17,8 +21,8 @@ use iced::widget::space::horizontal;
 use iced::widget::{button, column, container, row, text, Container, Text};
 use iced::{keyboard, time, Element, Renderer, Subscription, Task, Theme};
 use iced_aw::{TabBar, TabLabel};
-use poll::{PollMessage, PollState};
-use prediction::{PredictionMessage, PredictionState};
+use poll::PollMessage;
+use prediction::PredictionMessage;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::fs;
@@ -58,39 +62,24 @@ impl TabId {
     }
 }
 
-#[derive(Default, Debug, Eq, PartialEq)]
-enum AppPolling {
-    #[default]
-    Not,
-    Prediction,
-    Poll,
-}
-
 #[derive(Default, Debug)]
 struct App {
     client: reqwest::Client,
     broadcaster_id: Option<String>,
     access_token: Option<String>,
     refresh_token: Option<String>,
-    _loading: bool,
     auth_status: String,
     // Device code flow UI state
     device_code_info: Option<DeviceCodeInfo>,
     auth_in_progress: bool,
-    polling: AppPolling,
     active_tab: TabId,
     err: String,
     confirm: Option<String>,
-    poll_state: PollState,
-    polls: Vec<String>,
-    selected_poll: Option<String>,
-    poll_loaded: bool,
-    prediction_state: PredictionState,
-    predictions: Vec<String>,
-    selected_prediction: Option<String>,
-    prediction_loaded: bool,
     config_path: PathBuf,
-    debug: bool,
+    // shows sample buttons for testing result display, disable polling
+    sample: bool,
+    poll: PollTab,
+    prediction: PredictionTab,
 }
 
 #[derive(Debug, Clone)]
@@ -139,21 +128,10 @@ impl App {
                 Task::none()
             }
             Message::PredictionTick => {
-                if self.polling == AppPolling::Prediction {
-                    let broadcaster_id = self
-                        .broadcaster_id
-                        .clone()
-                        .expect("Should have broadcaster Id here");
-                    let pred_id = self
-                        .prediction_state
-                        .current_state
-                        .clone()
-                        .expect("Should have prediction state.")
-                        .id;
-                    let token = self
-                        .access_token
-                        .clone()
-                        .expect("Should have access token.");
+                let broadcaster_id = self.get_broadcaster_id();
+                if let PredictionRun::Live(d) = &self.prediction.run {
+                    let pred_id = d.id.clone();
+                    let token = self.get_token();
                     let client = self.client.clone();
                     Task::perform(
                         async move {
@@ -162,56 +140,43 @@ impl App {
                         Message::PredictionPolled,
                     )
                 } else {
-                    Task::none()
+                    Task::done(Message::Error("No Prediction data to query.".to_string()))
                 }
             }
             Message::PredictionPolled(resp) => match resp {
                 Ok(r) => {
-                    self.prediction_state.phase = Some(r.status.clone());
-                    if r.status == PredictionStatus::Canceled
-                        || r.status == PredictionStatus::Resolved
-                    {
-                        self.polling = AppPolling::Not;
-                    }
-                    self.prediction_state.current_state = Some(r);
+                    self.prediction.run = PredictionRun::Live(r);
                     Task::none()
                 }
                 Err(err) => {
                     error!("{:?}", err);
-                    self.polling = AppPolling::Not;
                     Task::done(Message::Error(err.to_string()))
                 }
             },
             Message::PollTick => {
-                if self.polling == AppPolling::Poll {
-                    let broadcaster_id = self.broadcaster_id.clone().unwrap();
-                    let poll_id = self.poll_state.current_state.clone().unwrap().id.clone();
-                    let token = self.access_token.clone().unwrap();
+                let broadcaster_id = self.get_broadcaster_id();
+                if let PollRun::Live(d) = &self.poll.run {
+                    let poll_id = d.id.clone();
+                    let token = self.get_token();
                     let client = self.client.clone();
                     Task::perform(
                         async move { check_poll(&client, &broadcaster_id, &poll_id, &token).await },
                         Message::PollPolled,
                     )
                 } else {
+                    Task::done(Message::Error("No Poll data to query.".to_string()))
+                }
+            }
+            Message::PollPolled(resp) => match resp {
+                Ok(r) => {
+                    self.poll.run = PollRun::Live(r);
                     Task::none()
                 }
-            }
-            Message::PollPolled(resp) => {
-                match resp {
-                    Ok(r) => {
-                        self.poll_state.phase = Some(r.status.clone());
-                        if r.status != PollPhase::Active {
-                            self.polling = AppPolling::Not;
-                        }
-                        self.poll_state.current_state = Some(r);
-                    }
-                    Err(err) => {
-                        error!("{:?}", err);
-                        self.polling = AppPolling::Not;
-                    }
+                Err(err) => {
+                    error!("{:?}", err);
+                    Task::done(Message::Error(err.to_string()))
                 }
-                Task::none()
-            }
+            },
             Message::Keyboard(event) => match event {
                 keyboard::Event::KeyPressed {
                     key: keyboard::Key::Named(keyboard::key::Named::Tab),
@@ -350,20 +315,25 @@ impl App {
 }
 
 fn subscription(app: &App) -> Subscription<Message> {
-    let keys = keyboard::listen().map(Message::Keyboard);
+    let mut subs = vec![keyboard::listen().map(Message::Keyboard)];
 
-    let polling = match app.polling {
-        AppPolling::Prediction => {
-            time::every(Duration::from_secs(1)).map(|_| Message::PredictionTick)
+    if let PollRun::Live(d) = &app.poll.run {
+        if d.status == PollPhase::Active && !app.sample {
+            subs.push(time::every(Duration::from_secs(2)).map(|_| Message::PollTick))
         }
-        AppPolling::Poll => time::every(Duration::from_secs(1)).map(|_| Message::PollTick),
-        AppPolling::Not => Subscription::none(),
-    };
-    Subscription::batch([keys, polling])
+    }
+
+    if let PredictionRun::Live(d) = &app.prediction.run {
+        if d.status == PredictionStatus::Active && !app.sample {
+            subs.push(time::every(Duration::from_secs(2)).map(|_| Message::PredictionTick))
+        }
+    }
+
+    Subscription::batch(subs)
 }
 
 fn main() -> iced::Result {
-    let debug = std::env::args().any(|x| x == "--debug");
+    let sample = std::env::args().any(|x| x == "--sample");
 
     // create all config dirs
     let proj = ProjectDirs::from("dev", "gearboros", "streamertools").unwrap();
@@ -395,7 +365,7 @@ fn main() -> iced::Result {
     info!("Starting Streamer Tools");
 
     iced::application(
-        move || App::new(&config_path, debug),
+        move || App::new(&config_path, sample),
         App::update,
         App::view,
     )
@@ -406,21 +376,31 @@ fn main() -> iced::Result {
 }
 
 impl App {
-    fn new(path: &Path, debug: bool) -> (Self, Task<Message>) {
+    fn new(path: &Path, sample: bool) -> (Self, Task<Message>) {
         let polls = Self::load_files(path.join("polls")).unwrap_or_default();
         let preds = Self::load_files(path.join("predictions")).unwrap_or_default();
 
-        let poll_state = PollState {
-            options: vec![String::new(), String::new()],
-            duration: 10,
-            channel_point_cost: 5000,
-            ..Default::default()
+        let poll = PollTab {
+            configs: ConfigList::with_list(polls),
+            form: PollState {
+                options: vec![String::new(), String::new()],
+                channel_point_cost: 5000,
+                duration: 10,
+                ..PollState::default()
+            },
+            ..PollTab::default()
         };
-        let prediction_state = PredictionState {
-            options: vec![String::new(), String::new()],
-            duration: 10,
-            ..Default::default()
+
+        let prediction = PredictionTab {
+            configs: ConfigList::with_list(preds),
+            form: PredictionState {
+                options: vec![String::new(), String::new()],
+                duration: 10,
+                ..PredictionState::default()
+            },
+            ..PredictionTab::default()
         };
+
         let config_path = path.to_path_buf();
         if let Some((access, refresh)) = load_tokens(&config_path) {
             info!("Loaded tokens, validating...");
@@ -428,28 +408,24 @@ impl App {
                 access_token: Some(access.clone()),
                 refresh_token: Some(refresh.clone()),
                 auth_status: "Checking saved token...".to_string(),
-                poll_state,
-                prediction_state,
+                poll,
+                prediction,
                 config_path,
-                polls,
-                predictions: preds,
-                debug,
-                ..Default::default()
+                sample,
+                ..App::default()
             };
             let task = Task::done(Message::Auth(AuthMessage::ValidateToken));
             return (app, task);
         }
-        info!("No tokens found in keyring");
+        info!("No tokens found in keyring or file.");
         (
             Self {
                 auth_status: "Not logged in".to_string(),
-                poll_state,
+                poll,
+                prediction,
                 config_path,
-                polls,
-                prediction_state,
-                predictions: preds,
-                debug,
-                ..Default::default()
+                sample,
+                ..App::default()
             },
             Task::none(),
         )
@@ -470,6 +446,18 @@ impl App {
                 Some(path.file_stem()?.to_str()?.to_string())
             })
             .collect())
+    }
+
+    fn get_broadcaster_id(&self) -> String {
+        self.broadcaster_id
+            .clone()
+            .expect("Should have broadcaster Id here")
+    }
+
+    fn get_token(&self) -> String {
+        self.access_token
+            .clone()
+            .expect("Should have access token.")
     }
 }
 

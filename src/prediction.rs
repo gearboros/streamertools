@@ -1,3 +1,4 @@
+use crate::config::ConfigList;
 use crate::sample_data::{prediction_five, prediction_ongoing, prediction_ten, prediction_two};
 use crate::style::{bold_text, thousand_separator};
 use crate::twitch_api::{
@@ -5,9 +6,7 @@ use crate::twitch_api::{
     CreatePredictionRequest, CreatePredictionResponseData, EndPredictionRequest, PollChoice, PredictionOutcome,
     PredictionStatus,
 };
-use crate::{
-    load_config, prediction, save_config, style, App, AppPolling, Message, BIG_SPACING, SPACING,
-};
+use crate::{load_config, prediction, save_config, style, App, Message, BIG_SPACING, SPACING};
 use iced::widget::{
     button, column, container, pick_list, row, rule, text, text_input, tooltip, Button, Column,
     PickList, Text, TextInput,
@@ -19,6 +18,21 @@ use rand::rng;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+#[derive(Default, Debug)]
+pub struct PredictionTab {
+    pub form: PredictionState,
+    pub run: PredictionRun,
+    pub configs: ConfigList,
+    pub active_tab: usize,
+}
+
+#[derive(Default, Debug, Clone, Eq, PartialEq)]
+pub enum PredictionRun {
+    #[default]
+    Idle,
+    Live(CreatePredictionResponseData),
+}
+
 #[derive(Default, Debug, Serialize, Deserialize, Clone)]
 #[serde(default)]
 pub struct PredictionState {
@@ -26,12 +40,6 @@ pub struct PredictionState {
     pub options: Vec<String>,
     pub duration: usize,
     pub name: String,
-    #[serde(skip)]
-    pub phase: Option<PredictionStatus>,
-    #[serde(skip)]
-    pub current_state: Option<CreatePredictionResponseData>,
-    #[serde(skip)]
-    pub active_tab: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -44,9 +52,9 @@ pub enum PredictionMessage {
     PredictionCreated(Result<CreatePredictionResponseData, String>),
     DurationChange(usize),
     WinnerChosen(String),
-    PredictionEnded(Result<(), String>),
-    PredictionLocked(Result<(), String>),
-    PredictionCanceled(Result<(), String>),
+    PredictionEnded(Result<CreatePredictionResponseData, String>),
+    PredictionLocked(Result<CreatePredictionResponseData, String>),
+    PredictionCanceled(Result<CreatePredictionResponseData, String>),
     ConfigSelected(String),
     SaveConfig,
     NewConfig,
@@ -59,63 +67,68 @@ pub enum PredictionMessage {
     TabSelected(usize),
 }
 
-fn get_state_view(state: &PredictionState) -> Element<'static, Message, Theme, Renderer> {
-    if state.phase.is_none() {
-        crate::widgets::empty_panel("🎲", "No prediction running yet")
-    } else if state.phase == Some(PredictionStatus::Active) {
-        column![
-            Text::new("Voting active, currently at:"),
-            get_points_distribution(&state.current_state, state.active_tab)
-        ]
-        .spacing(SPACING)
-        .into()
-    } else if state.phase == Some(PredictionStatus::Locked) {
-        column![
-            Text::new("Voting closed, prediction active."),
-            get_points_distribution(&state.current_state, state.active_tab)
-        ]
-        .spacing(SPACING)
-        .into()
-    } else if state.phase == Some(PredictionStatus::Canceled) {
-        Text::new("Prediction cancelled.").into()
-    } else if state.phase == Some(PredictionStatus::Resolved) {
-        let current = state.current_state.clone().expect("Should have state here");
-        let winner_id = current
-            .winning_outcome_id
-            .clone()
-            .expect("Should have a winner here");
-        let winner = current
-            .outcomes
-            .iter()
-            .find(|x| x.id == winner_id)
-            .expect("Should have winner here");
-        let total_points = current
-            .outcomes
-            .iter()
-            .map(|o| o.channel_points)
-            .sum::<i32>();
-        let ratio = if winner.channel_points == 0 {
-            0f64
-        } else {
-            total_points as f64 / winner.channel_points as f64
-        };
-        column![
-            row![
-                Text::new("Prediction resolved, Winner: "),
-                bold_text(winner.title.clone()),
-                Text::new(format!(" ({ratio:.2}x)")),
-            ],
-            get_points_distribution(&state.current_state, state.active_tab)
-        ]
-        .spacing(SPACING)
-        .into()
+fn get_state_view(
+    run: &PredictionRun,
+    active_tab: usize,
+) -> Element<'static, Message, Theme, Renderer> {
+    if let PredictionRun::Live(current) = run {
+        match current.status {
+            PredictionStatus::Resolved => {
+                let winner = get_winner(current);
+                let total_points = current
+                    .outcomes
+                    .iter()
+                    .map(|o| o.channel_points)
+                    .sum::<i32>();
+                let ratio = if winner.channel_points == 0 {
+                    0f64
+                } else {
+                    total_points as f64 / winner.channel_points as f64
+                };
+                column![
+                    row![
+                        Text::new("Prediction resolved, Winner: "),
+                        bold_text(winner.title.clone()),
+                        Text::new(format!(" ({ratio:.2}x)")),
+                    ],
+                    get_points_distribution(&Some(current), active_tab)
+                ]
+                .spacing(SPACING)
+                .into()
+            }
+            PredictionStatus::Active => column![
+                Text::new("Voting active, currently at:"),
+                get_points_distribution(&Some(current), active_tab)
+            ]
+            .spacing(SPACING)
+            .into(),
+            PredictionStatus::Locked => column![
+                Text::new("Voting closed, prediction active."),
+                get_points_distribution(&Some(current), active_tab)
+            ]
+            .spacing(SPACING)
+            .into(),
+            PredictionStatus::Canceled => Text::new("Prediction cancelled.").into(),
+        }
     } else {
-        Text::new("").into()
+        crate::widgets::empty_panel("🎲", "No prediction running yet")
     }
 }
 
+fn get_winner(current: &CreatePredictionResponseData) -> &PredictionOutcome {
+    let winner_id = current
+        .winning_outcome_id
+        .clone()
+        .expect("Should have a winner here");
+    current
+        .outcomes
+        .iter()
+        .find(|x| x.id == winner_id)
+        .expect("Should have a winner here")
+}
+
 fn get_points_distribution(
-    state: &Option<CreatePredictionResponseData>,
+    state: &Option<&CreatePredictionResponseData>,
     active_tab: usize,
 ) -> Element<'static, Message, Theme, Renderer> {
     let Some(state) = state.clone() else {
@@ -229,57 +242,58 @@ impl App {
         use prediction::PredictionMessage::*;
         match pred_message {
             TitleChanged(t) => {
-                self.prediction_state.title = t;
+                self.prediction.form.title = t;
                 Task::none()
             }
             SaveConfig => {
                 if let Err(e) = save_config(
                     &self.config_path,
                     "predictions",
-                    &self.prediction_state.name,
-                    &self.prediction_state,
+                    &self.prediction.form.name,
+                    &self.prediction.form,
                 ) {
                     return Task::done(Message::Error(e.to_string()));
                 };
-                self.predictions = match Self::load_files(self.config_path.join("predictions")) {
-                    Ok(predictions) => predictions,
-                    Err(e) => return Task::done(Message::Error(e)),
-                };
-                self.selected_prediction = Some(self.prediction_state.name.clone());
-                self.prediction_loaded = true;
+                self.prediction.configs.items =
+                    match Self::load_files(self.config_path.join("predictions")) {
+                        Ok(predictions) => predictions,
+                        Err(e) => return Task::done(Message::Error(e)),
+                    };
+                self.prediction.configs.selected = Some(self.prediction.form.name.clone());
+                self.prediction.configs.loaded = true;
                 Task::none()
             }
             NewConfig => {
-                self.prediction_state.name = String::new();
-                self.prediction_loaded = false;
-                self.selected_prediction = None;
+                self.prediction.form.name = String::new();
+                self.prediction.configs.loaded = false;
+                self.prediction.configs.selected = None;
                 Task::none()
             }
             NameChanged(name) => {
-                self.prediction_state.name = name;
+                self.prediction.form.name = name;
                 Task::none()
             }
             SwitchOptions => {
-                if self.prediction_state.options.len() == 2 {
-                    self.prediction_state.options.swap(0, 1);
+                if self.prediction.form.options.len() == 2 {
+                    self.prediction.form.options.swap(0, 1);
                 } else {
-                    self.prediction_state.options.shuffle(&mut rng())
+                    self.prediction.form.options.shuffle(&mut rng())
                 }
                 Task::none()
             }
             OptionChanged(idx, val) => {
-                if let Some(o) = self.prediction_state.options.get_mut(idx) {
+                if let Some(o) = self.prediction.form.options.get_mut(idx) {
                     *o = val;
                 }
                 Task::none()
             }
             AddOption => {
-                self.prediction_state.options.push(String::new());
+                self.prediction.form.options.push(String::new());
                 Task::none()
             }
             RemoveOption(idx) => {
-                if self.prediction_state.options.len() > 2 {
-                    self.prediction_state.options.remove(idx);
+                if self.prediction.form.options.len() > 2 {
+                    self.prediction.form.options.remove(idx);
                 }
                 Task::none()
             }
@@ -288,14 +302,15 @@ impl App {
                 if let Some(token) = access_token {
                     let request = CreatePredictionRequest {
                         broadcaster_id: self.broadcaster_id.clone().unwrap_or_default(),
-                        title: self.prediction_state.title.clone(),
+                        title: self.prediction.form.title.clone(),
                         outcomes: self
-                            .prediction_state
+                            .prediction
+                            .form
                             .options
                             .iter()
                             .map(|o| PollChoice { title: o.clone() })
                             .collect(),
-                        prediction_window: self.prediction_state.duration * 60,
+                        prediction_window: self.prediction.form.duration * 60,
                     };
                     let client = self.client.clone();
                     Task::perform(
@@ -308,93 +323,80 @@ impl App {
                     ))
                 }
             }
-            PredictionCreated(r) => match r {
-                Ok(data) => {
-                    self.prediction_state.current_state = Some(data);
-                    self.prediction_state.phase = Some(PredictionStatus::Active);
-                    self.polling = AppPolling::Prediction;
-                    Task::none()
-                }
-                Err(e) => {
-                    self.prediction_state.phase = None;
-                    Task::done(Message::Error(e))
-                }
-            },
+            PredictionCreated(r) => self.set_prediction_phase(r),
             DurationChange(d) => {
-                self.prediction_state.duration = d;
+                self.prediction.form.duration = d;
                 Task::none()
             }
             WinnerChosen(id) => {
-                self.polling = AppPolling::Not;
-                let token = self.access_token.clone().unwrap_or_default();
-                let request = EndPredictionRequest {
-                    outcome_id: id,
-                    broadcaster_id: self.broadcaster_id.clone().unwrap_or_default(),
-                    prediction_id: self
-                        .prediction_state
-                        .current_state
-                        .clone()
-                        .unwrap()
-                        .id
-                        .clone(),
-                };
-                let client = self.client.clone();
-                Task::perform(
-                    async move { end_prediction(&client, request, &token).await },
-                    |r| Message::Prediction(PredictionEnded(r)),
-                )
+                if let PredictionRun::Live(d) = &self.prediction.run {
+                    let token = self.access_token.clone().unwrap_or_default();
+                    let prediction_id = d.id.clone();
+                    let request = EndPredictionRequest {
+                        outcome_id: id,
+                        broadcaster_id: self.broadcaster_id.clone().unwrap_or_default(),
+                        prediction_id,
+                    };
+                    let client = self.client.clone();
+                    Task::perform(
+                        async move { end_prediction(&client, request, &token).await },
+                        |r| Message::Prediction(PredictionEnded(r)),
+                    )
+                } else {
+                    Task::done(Message::Error(
+                        "Should have prediction state here.".to_string(),
+                    ))
+                }
             }
-            PredictionEnded(r) => match r {
-                Ok(()) => {
-                    self.prediction_state.phase = Some(PredictionStatus::Resolved);
-                    Task::none()
-                }
-                Err(e) => {
-                    self.polling = AppPolling::Prediction;
-                    Task::done(Message::Error(e))
-                }
-            },
+            PredictionEnded(r) => self.set_prediction_phase(r),
             ConfigSelected(c) => {
                 if let Some(state) =
                     load_config::<PredictionState>(&self.config_path, "predictions", &c)
                 {
-                    self.prediction_state = state;
-                    self.prediction_loaded = true;
+                    self.prediction.form = state;
+                    self.prediction.configs.loaded = true;
+                    self.prediction.configs.selected = Some(c);
                 }
-                self.selected_prediction = Some(c);
                 Task::none()
             }
             LockPrediction => {
                 let token = self.access_token.clone().unwrap_or_default();
-                let request = self.create_end_prediction_request();
-                let client = self.client.clone();
-                Task::perform(
-                    async move { lock_prediction(&client, request, &token).await },
-                    |r| Message::Prediction(PredictionLocked(r)),
-                )
+                match self.create_end_prediction_request() {
+                    Ok(request) => {
+                        let client = self.client.clone();
+                        Task::perform(
+                            async move { lock_prediction(&client, request, &token).await },
+                            |r| Message::Prediction(PredictionLocked(r)),
+                        )
+                    }
+                    Err(e) => Task::done(Message::Error(e)),
+                }
             }
-            PredictionLocked(r) => self.set_prediction_phase(r, PredictionStatus::Locked),
+            PredictionLocked(r) => self.set_prediction_phase(r),
             CancelPrediction => {
                 let token = self.access_token.clone().unwrap_or_default();
-                let request = self.create_end_prediction_request();
-                let client = self.client.clone();
-                Task::perform(
-                    async move { cancel_prediction(&client, request, &token).await },
-                    |r| Message::Prediction(PredictionCanceled(r)),
-                )
+                match self.create_end_prediction_request() {
+                    Ok(request) => {
+                        let client = self.client.clone();
+                        Task::perform(
+                            async move { cancel_prediction(&client, request, &token).await },
+                            |r| Message::Prediction(PredictionCanceled(r)),
+                        )
+                    }
+                    Err(e) => Task::done(Message::Error(e)),
+                }
             }
-            PredictionCanceled(r) => self.set_prediction_phase(r, PredictionStatus::Canceled),
+            PredictionCanceled(r) => self.set_prediction_phase(r),
             ResetPrediction => {
-                self.prediction_state.phase = None;
+                self.prediction.run = PredictionRun::Idle;
                 Task::none()
             }
             LoadSampleData(data) => {
-                self.prediction_state.phase = Some(data.status.clone());
-                self.prediction_state.current_state = Some(data);
+                self.prediction.run = PredictionRun::Live(data);
                 Task::none()
             }
             TabSelected(idx) => {
-                self.prediction_state.active_tab = idx;
+                self.prediction.active_tab = idx;
                 Task::none()
             }
         }
@@ -402,42 +404,47 @@ impl App {
 
     fn set_prediction_phase(
         &mut self,
-        result: Result<(), String>,
-        phase: PredictionStatus,
+        result: Result<CreatePredictionResponseData, String>,
     ) -> Task<Message> {
         match result {
-            Ok(()) => {
-                self.prediction_state.phase = Some(phase);
+            Ok(r) => {
+                self.prediction.run = PredictionRun::Live(r);
                 Task::none()
             }
             Err(e) => Task::done(Message::Error(e)),
         }
     }
 
-    fn create_end_prediction_request(&mut self) -> EndPredictionRequest {
-        EndPredictionRequest {
-            outcome_id: String::new(),
-            broadcaster_id: self.broadcaster_id.clone().unwrap_or_default(),
-            prediction_id: self
-                .prediction_state
-                .current_state
-                .clone()
-                .unwrap()
-                .id
-                .clone(),
+    fn create_end_prediction_request(&self) -> Result<EndPredictionRequest, String> {
+        if let PredictionRun::Live(d) = &self.prediction.run {
+            let prediction_id = d.id.clone();
+            Ok(EndPredictionRequest {
+                outcome_id: String::new(),
+                broadcaster_id: self.broadcaster_id.clone().unwrap_or_default(),
+                prediction_id,
+            })
+        } else {
+            Err("Prediction run should be live".to_string())
         }
     }
 
     pub fn get_prediction_tab_content(&self) -> Element<'static, Message, Theme, Renderer> {
         let dropdown: PickList<'_, String, Vec<String>, String, Message> = pick_list(
-            self.predictions.clone(),
-            self.selected_prediction.clone(),
+            self.prediction.configs.items.clone(),
+            self.prediction.configs.selected.clone(),
             |t| Message::Prediction(PredictionMessage::ConfigSelected(t)),
         )
         .placeholder("Select a config to load");
-        let state = self.prediction_state.clone();
+        let state = self.prediction.form.clone();
+        let editable = self.prediction.run == PredictionRun::Idle;
+        let phase = if let PredictionRun::Live(d) = &self.prediction.run {
+            Some(d.status.clone())
+        } else {
+            None
+        };
+
         let mut name_input: TextInput<_> = text_input("Config Name", &state.name);
-        if !self.prediction_loaded {
+        if !self.prediction.configs.loaded {
             name_input =
                 name_input.on_input(|n| Message::Prediction(PredictionMessage::NameChanged(n)));
         }
@@ -445,8 +452,12 @@ impl App {
             .on_press(Message::Prediction(PredictionMessage::NewConfig))
             .style(style::neutral_button);
 
-        let can_save =
-            self.prediction_loaded || !self.predictions.contains(&self.prediction_state.name);
+        let can_save = self.prediction.configs.loaded
+            || !self
+                .prediction
+                .configs
+                .items
+                .contains(&self.prediction.form.name);
 
         let save_btn = button("Save").style(style::neutral_button);
         let save_elem: Element<'_, Message> = if can_save {
@@ -470,7 +481,7 @@ impl App {
             .on_input(|r| Message::Prediction(PredictionMessage::TitleChanged(r)));
         let mut opt_col: Column<_> = iced::widget::column![].spacing(SPACING);
 
-        if state.phase.is_none() {
+        if editable {
             for (idx, option) in state.options.iter().enumerate() {
                 let input =
                     text_input(format!("Option {}", idx + 1).as_str(), option).on_input(move |s| {
@@ -479,17 +490,22 @@ impl App {
                 let mut rem_btn = button(text("-").center())
                     .width(30)
                     .style(style::red_button);
-                if state.options.len() > 2 && state.phase.is_none() {
+                if state.options.len() > 2 {
                     rem_btn =
                         rem_btn.on_press(Message::Prediction(PredictionMessage::RemoveOption(idx)));
                 }
                 opt_col = opt_col.push(row![rem_btn, input].spacing(SPACING));
             }
-        } else if state.current_state.is_some() {
-            for option in state.current_state.clone().unwrap().outcomes.iter() {
+        } else {
+            let options = if let PredictionRun::Live(d) = &self.prediction.run {
+                d.outcomes.clone()
+            } else {
+                vec![]
+            };
+            for option in options.clone().iter() {
                 let text = Text::new(option.title.clone()).width(Length::Fill);
                 let mut win_btn = button("Winner!");
-                if state.current_state.is_some() && state.phase == Some(PredictionStatus::Locked) {
+                if phase == Some(PredictionStatus::Locked) {
                     win_btn = win_btn.on_press(Message::Prediction(
                         PredictionMessage::WinnerChosen(option.id.clone()),
                     ));
@@ -501,7 +517,7 @@ impl App {
         let mut add_btn = button(text("+").center()).width(30);
         let mut switch_btn = button("Switch Options");
         let mut shuffle_btn = button("Shuffle Options");
-        if state.phase.is_none() {
+        if editable {
             add_btn = add_btn.on_press(Message::Prediction(PredictionMessage::AddOption));
             switch_btn = switch_btn.on_press(Message::Prediction(PredictionMessage::SwitchOptions));
             shuffle_btn =
@@ -518,36 +534,32 @@ impl App {
         let mut duration_inp = number_input(&state.duration, 1..=30, |d| {
             Message::Prediction(PredictionMessage::DurationChange(d))
         });
-        if state.current_state.is_some() {
+        if !editable {
             duration_inp = duration_inp.on_input_maybe(None::<fn(usize) -> Message>);
         }
 
         let duration_row = row![duration_text, duration_inp].align_y(Center);
 
         let mut submit_btn = button("Submit");
-        if state.phase.is_none() {
+        if editable {
             submit_btn = submit_btn.on_press(Message::Prediction(PredictionMessage::Submit));
         }
         let mut lock_btn = button("Lock");
-        if state.phase == Some(PredictionStatus::Active) {
+        if phase == Some(PredictionStatus::Active) {
             lock_btn = lock_btn.on_press(Message::Prediction(PredictionMessage::LockPrediction));
         }
         let mut cancel_btn = button("Cancel").style(style::red_button);
-        if state.phase == Some(PredictionStatus::Active)
-            || state.phase == Some(PredictionStatus::Locked)
-        {
+        if phase == Some(PredictionStatus::Active) || phase == Some(PredictionStatus::Locked) {
             cancel_btn =
                 cancel_btn.on_press(Message::Prediction(PredictionMessage::CancelPrediction));
         }
         let mut reset_btn = button("Reset").style(style::neutral_button);
-        if state.phase == Some(PredictionStatus::Resolved)
-            || state.phase == Some(PredictionStatus::Canceled)
-        {
+        if phase == Some(PredictionStatus::Resolved) || phase == Some(PredictionStatus::Canceled) {
             reset_btn = reset_btn.on_press(Message::Prediction(PredictionMessage::ResetPrediction));
         }
         let btn_row = row![submit_btn, lock_btn, cancel_btn, reset_btn].spacing(SPACING);
         let mut dbg_row = column![];
-        if self.debug {
+        if self.sample {
             let two_option_sample =
                 button("Two Options")
                     .style(style::dbg_button)
@@ -584,7 +596,7 @@ impl App {
             ];
         }
 
-        let status_display = get_state_view(&state);
+        let status_display = get_state_view(&self.prediction.run, self.prediction.active_tab);
 
         let form = column![
             save_row,

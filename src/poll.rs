@@ -1,3 +1,4 @@
+use crate::config::ConfigList;
 use crate::poll::PollMessage::DurationChange;
 use crate::sample_data::{
     poll_points_winner, poll_popular_winner, poll_total_winner, running_poll,
@@ -6,8 +7,7 @@ use crate::style::{bold_text, thousand_separator};
 use crate::twitch_api::{
     create_poll, end_poll, CreatePollRequest, PollChoice, PollChoiceState, PollPhase, PollStateData,
 };
-use crate::AppPolling::Not;
-use crate::{load_config, save_config, App, AppPolling, Message, BIG_SPACING, SPACING};
+use crate::{load_config, save_config, App, Message, BIG_SPACING, SPACING};
 use iced::widget::{
     button, checkbox, column, container, pick_list, row, rule, text, text_input, tooltip,
     Button, Checkbox, Column, PickList, Text, TextInput,
@@ -16,12 +16,37 @@ use iced::{Center, Element, Length, Renderer, Task, Theme};
 use iced_aw::number_input;
 use serde::{Deserialize, Serialize};
 
+#[derive(Default, Debug)]
+pub struct PollTab {
+    pub form: PollState,
+    pub run: PollRun,
+    pub configs: ConfigList,
+}
+
+#[derive(Default, Debug, Clone, Eq, PartialEq)]
+pub enum PollRun {
+    #[default]
+    Idle,
+    Live(PollStateData),
+}
+
+#[derive(Default, Debug, Serialize, Deserialize, Clone)]
+#[serde(default)]
+pub struct PollState {
+    pub title: String,
+    pub options: Vec<String>,
+    pub duration: usize,
+    pub uses_channel_points: bool,
+    pub channel_point_cost: usize,
+    pub name: String,
+}
+
 impl App {
     pub fn handle_poll(&mut self, poll_message: PollMessage) -> Task<Message> {
         use crate::poll::PollMessage::*;
         match poll_message {
             TitleChanged(t) => {
-                self.poll_state.title = t;
+                self.poll.form.title = t;
                 Task::none()
             }
             Submit => {
@@ -29,16 +54,17 @@ impl App {
                 if let Some(token) = access_token {
                     let request = CreatePollRequest {
                         broadcaster_id: self.broadcaster_id.clone().unwrap_or_default(),
-                        title: self.poll_state.title.clone(),
+                        title: self.poll.form.title.clone(),
                         choices: self
-                            .poll_state
+                            .poll
+                            .form
                             .options
                             .iter()
                             .map(|o| PollChoice { title: o.clone() })
                             .collect(),
-                        duration: self.poll_state.duration * 60,
-                        channel_points_voting_enabled: self.poll_state.uses_channel_points,
-                        channel_points_per_vote: self.poll_state.channel_point_cost,
+                        duration: self.poll.form.duration * 60,
+                        channel_points_voting_enabled: self.poll.form.uses_channel_points,
+                        channel_points_per_vote: self.poll.form.channel_point_cost,
                     };
                     let client = self.client.clone();
                     Task::perform(
@@ -52,123 +78,126 @@ impl App {
                 }
             }
             OptionChanged(idx, val) => {
-                if let Some(o) = self.poll_state.options.get_mut(idx) {
+                if let Some(o) = self.poll.form.options.get_mut(idx) {
                     *o = val;
                 }
                 Task::none()
             }
             AddOption => {
-                self.poll_state.options.push(String::new());
+                self.poll.form.options.push(String::new());
                 Task::none()
             }
             RemoveOption(idx) => {
-                if self.poll_state.options.len() > 2 {
-                    self.poll_state.options.remove(idx);
+                if self.poll.form.options.len() > 2 {
+                    self.poll.form.options.remove(idx);
                 }
                 Task::none()
             }
-            PollCreated(r) => match r {
-                Ok(resp) => {
-                    self.polling = AppPolling::Poll;
-                    self.poll_state.current_state = Some(resp);
-                    self.poll_state.phase = Some(PollPhase::Active);
-                    Task::none()
-                }
-                Err(e) => {
-                    self.poll_state.phase = None;
-                    Task::done(Message::Error(e))
-                }
-            },
+            PollCreated(r) => self.set_poll_run(r),
             DurationChange(d) => {
-                self.poll_state.duration = d;
+                self.poll.form.duration = d;
                 Task::none()
             }
             ChannelPointsToggled(t) => {
-                self.poll_state.uses_channel_points = t;
+                self.poll.form.uses_channel_points = t;
                 Task::none()
             }
             PointCostChange(c) => {
-                self.poll_state.channel_point_cost = c;
+                self.poll.form.channel_point_cost = c;
                 Task::none()
             }
             EndPoll => {
                 let token = self.access_token.clone().unwrap_or_default();
                 let broadcaster = self.broadcaster_id.clone().unwrap_or_default();
-                let poll_id = self.poll_state.current_state.clone().unwrap().id.clone();
                 let client = self.client.clone();
-                Task::perform(
-                    async move { end_poll(&client, &broadcaster, &poll_id, &token).await },
-                    |r| Message::Poll(PollEnded(r)),
-                )
-            }
-            PollEnded(r) => match r {
-                Ok(()) => {
-                    self.polling = Not;
-                    self.poll_state.phase = None;
-                    self.poll_state.current_state = None;
-                    Task::none()
+                if let PollRun::Live(d) = &self.poll.run {
+                    let poll_id = d.id.clone();
+                    Task::perform(
+                        async move { end_poll(&client, &broadcaster, &poll_id, &token).await },
+                        |r| Message::Poll(PollEnded(r)),
+                    )
+                } else {
+                    Task::done(Message::Error("No poll data to end.".to_string()))
                 }
-                Err(e) => Task::done(Message::Error(e)),
-            },
+            }
+            PollEnded(r) => self.set_poll_run(r),
             SaveConfig => {
                 if let Err(e) = save_config(
                     &self.config_path,
                     "polls",
-                    &self.poll_state.name,
-                    &self.poll_state,
+                    &self.poll.form.name,
+                    &self.poll.form,
                 ) {
                     return Task::done(Message::Error(e.to_string()));
                 };
-                self.polls = match Self::load_files(self.config_path.join("polls")) {
+                self.poll.configs.items = match Self::load_files(self.config_path.join("polls")) {
                     Ok(polls) => polls,
                     Err(e) => return Task::done(Message::Error(e)),
                 };
-                self.selected_poll = Some(self.poll_state.name.clone());
-                self.poll_loaded = true;
+                self.poll.configs.selected = Some(self.poll.form.name.clone());
+                self.poll.configs.loaded = true;
                 Task::none()
             }
             ConfigSelected(c) => {
                 if let Some(state) = load_config::<PollState>(&self.config_path, "polls", &c) {
-                    self.poll_state = state;
-                    self.poll_loaded = true;
+                    self.poll.configs.selected = Some(state.name.clone());
+                    self.poll.configs.loaded = true;
+                    self.poll.form = state;
                 }
-                self.selected_poll = Some(c);
                 Task::none()
             }
             NewConfig => {
-                self.poll_state.name = String::new();
-                self.poll_loaded = false;
-                self.selected_poll = None;
+                self.poll.form.name = String::new();
+                self.poll.configs.loaded = false;
+                self.poll.configs.selected = None;
                 Task::none()
             }
             NameChanged(name) => {
-                self.poll_state.name = name;
+                self.poll.form.name = name;
                 Task::none()
             }
             LoadSampleData(data) => {
-                self.poll_state.current_state = Some(data);
-                self.poll_state.phase = Some(self.poll_state.current_state.clone().unwrap().status);
+                self.poll.run = PollRun::Live(data);
                 Task::none()
             }
         }
     }
 
+    fn set_poll_run(&mut self, result: Result<PollStateData, String>) -> Task<Message> {
+        match result {
+            Ok(d) => {
+                self.poll.run = PollRun::Live(d);
+                Task::none()
+            }
+            Err(e) => Task::done(Message::Error(e)),
+        }
+    }
+
     pub fn get_poll_tab_content(&self) -> Element<'static, Message, Theme, Renderer> {
-        let dropdown: PickList<'_, String, Vec<String>, String, Message> =
-            pick_list(self.polls.clone(), self.selected_poll.clone(), |t| {
-                Message::Poll(PollMessage::ConfigSelected(t))
-            })
-            .placeholder("Select a config to load");
-        let state = self.poll_state.clone();
+        let dropdown: PickList<'_, String, Vec<String>, String, Message> = pick_list(
+            self.poll.configs.items.clone(),
+            self.poll.configs.selected.clone(),
+            |t| Message::Poll(PollMessage::ConfigSelected(t)),
+        )
+        .placeholder("Select a config to load");
+        let state = self.poll.form.clone();
+        let editable = self.poll.run == PollRun::Idle;
+        let phase = if let PollRun::Live(d) = &self.poll.run {
+            Some(d.status.clone())
+        } else {
+            None
+        };
+
         let mut name_input: TextInput<_> = text_input("Config Name", &state.name);
-        if !self.poll_loaded {
+        if !self.poll.configs.loaded {
             name_input = name_input.on_input(|n| Message::Poll(PollMessage::NameChanged(n)));
         }
         let new_btn: Button<_> = button("New")
             .on_press(Message::Poll(PollMessage::NewConfig))
             .style(crate::style::neutral_button);
 
-        let can_save = self.poll_loaded || !self.polls.contains(&self.poll_state.name);
+        let can_save =
+            self.poll.configs.loaded || !self.poll.configs.items.contains(&self.poll.form.name);
 
         let save_btn = button("Save").style(crate::style::neutral_button);
         let save_elem: Element<'_, Message> = if can_save {
@@ -203,16 +232,17 @@ impl App {
             opt_col = opt_col.push(row![rem_btn, input].spacing(SPACING));
         }
 
-        let add_btn = button(text("+").center())
-            .width(30)
-            .on_press(Message::Poll(PollMessage::AddOption));
+        let mut add_btn = button(text("+").center()).width(30);
+        if editable {
+            add_btn = add_btn.on_press(Message::Poll(PollMessage::AddOption));
+        }
         let option_btn_row = row![add_btn].spacing(SPACING);
 
         let duration_text = Text::new("Duration in mins: ");
         let mut duration_inp = number_input(&state.duration, 1..=30, |d| {
             Message::Poll(DurationChange(d))
         });
-        if state.current_state.is_some() {
+        if editable {
             duration_inp = duration_inp.on_input_maybe(None::<fn(usize) -> Message>)
         }
 
@@ -231,15 +261,18 @@ impl App {
                 channel_row.push(row![channel_point_text, channel_point_input].align_y(Center))
         }
 
-        let submit_btn = button("Submit").on_press(Message::Poll(PollMessage::Submit));
+        let mut submit_btn = button("Submit");
+        if editable {
+            submit_btn = submit_btn.on_press(Message::Poll(PollMessage::Submit));
+        }
         let end_btn = button("End Poll").on_press(Message::Poll(PollMessage::EndPoll));
         let mut btns = row![submit_btn].spacing(SPACING);
-        if state.phase == Some(PollPhase::Active) {
+        if phase == Some(PollPhase::Active) {
             btns = btns.push(end_btn)
         }
 
         let mut dbg_row = column![];
-        if self.debug {
+        if self.sample {
             let total_winner = button("Total Winner")
                 .style(crate::style::dbg_button)
                 .on_press(Message::Poll(PollMessage::LoadSampleData(
@@ -264,7 +297,7 @@ impl App {
             ];
         }
 
-        let status_display = get_state_view(&state);
+        let status_display = get_state_view(&state, &self.poll.run);
 
         let form = column![
             save_row,
@@ -290,28 +323,20 @@ impl App {
     }
 }
 
-fn get_state_view(state: &PollState) -> Element<'static, Message, Theme, Renderer> {
-    if state.phase.is_none() {
-        crate::widgets::empty_panel("📊", "No poll running yet")
-    } else {
-        let (winner, popular_winner, point_winner) =
-            get_winners(&state.current_state.clone().unwrap());
-        let active = state.phase == Some(PollPhase::Active);
+fn get_state_view(state: &PollState, run: &PollRun) -> Element<'static, Message, Theme, Renderer> {
+    if let PollRun::Live(d) = run {
+        let (winner, popular_winner, point_winner) = get_winners(&d);
+        let active = d.status == PollPhase::Active;
         let main_label = if active {
             "Voting active, current leader: "
         } else {
             "Voting ended, winner: "
         };
-        let popular_label = if active {
-            "Popular vote leader: "
-        } else {
-            "Popular vote winner: "
-        };
-        let point_label = if active {
-            "Point vote leader: "
-        } else {
-            "Point vote winner: "
-        };
+        let popular_label = format!(
+            "Popular vote {}: ",
+            if active { "leader" } else { "winner" }
+        );
+        let point_label = format!("Point vote {}: ", if active { "leader" } else { "winner" });
         let mut col = column![row![Text::new(main_label), bold_text(winner.title.clone())],];
         if winner.id != popular_winner.id {
             col = col.push(row![
@@ -325,16 +350,15 @@ fn get_state_view(state: &PollState) -> Element<'static, Message, Theme, Rendere
                 bold_text(point_winner.title.clone())
             ])
         }
-        col = col.push(get_votes_result(
-            &state.current_state,
-            state.channel_point_cost,
-        ));
+        col = col.push(get_votes_result(&Some(d), state.channel_point_cost));
         col.spacing(SPACING).into()
+    } else {
+        crate::widgets::empty_panel("📊", "No poll running yet")
     }
 }
 
 fn get_votes_result(
-    state: &Option<PollStateData>,
+    state: &Option<&PollStateData>,
     cost: usize,
 ) -> Element<'static, Message, Theme, Renderer> {
     let Some(state) = state.clone() else {
@@ -428,21 +452,6 @@ fn get_winners(state: &PollStateData) -> (PollChoiceState, PollChoiceState, Poll
     (winner, popular_winner, point_winner)
 }
 
-#[derive(Default, Debug, Serialize, Deserialize, Clone)]
-#[serde(default)]
-pub struct PollState {
-    pub title: String,
-    pub options: Vec<String>,
-    pub duration: usize,
-    pub uses_channel_points: bool,
-    pub channel_point_cost: usize,
-    #[serde(skip)]
-    pub phase: Option<PollPhase>,
-    #[serde(skip)]
-    pub current_state: Option<PollStateData>,
-    pub name: String,
-}
-
 #[derive(Debug, Clone)]
 pub enum PollMessage {
     TitleChanged(String),
@@ -455,7 +464,7 @@ pub enum PollMessage {
     ChannelPointsToggled(bool),
     PointCostChange(usize),
     EndPoll,
-    PollEnded(Result<(), String>),
+    PollEnded(Result<PollStateData, String>),
     ConfigSelected(String),
     SaveConfig,
     NewConfig,
