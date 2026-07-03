@@ -5,6 +5,7 @@ mod sample_data;
 mod style;
 mod twitch_api;
 mod twitch_auth;
+mod widgets;
 
 use crate::style::{twitch_button, twitch_tab};
 use crate::twitch_auth::*;
@@ -13,8 +14,8 @@ use directories::ProjectDirs;
 use iced::alignment::Vertical;
 use iced::widget::operation::{focus_next, focus_previous};
 use iced::widget::space::horizontal;
-use iced::widget::{button, center, column, container, row, stack, text, Container, Text};
-use iced::{keyboard, time, Color, Element, Length, Renderer, Subscription, Task, Theme};
+use iced::widget::{button, column, container, row, text, Container, Text};
+use iced::{keyboard, time, Element, Renderer, Subscription, Task, Theme};
 use iced_aw::{TabBar, TabLabel};
 use poll::{PollMessage, PollState};
 use prediction::{PredictionMessage, PredictionState};
@@ -295,7 +296,7 @@ impl App {
             .padding(10)
             .style(container::rounded_box);
 
-            modal(content.padding(20), error, Message::ClearError)
+            widgets::modal(content.padding(20), error, Message::ClearError)
         } else if self.confirm.is_some() {
             let confirm = container(
                 column![
@@ -319,7 +320,7 @@ impl App {
             .padding(10)
             .style(container::rounded_box);
 
-            modal(
+            widgets::modal(
                 content.padding(20),
                 confirm,
                 Message::Auth(AuthMessage::FallbackConfirmed(false)),
@@ -475,47 +476,4 @@ fn load_config<T: DeserializeOwned>(root: &Path, subdir: &str, name: &str) -> Op
     fs::read_to_string(root.join(subdir).join(format!("{name}.json")))
         .ok()
         .and_then(|t| serde_json::from_str(&t).ok())
-}
-
-fn empty_panel(
-    icon: &'static str,
-    heading: &'static str,
-) -> Element<'static, Message, Theme, Renderer> {
-    center(
-        column![text(icon).size(48), text(heading).size(20),]
-            .spacing(SPACING)
-            .align_x(iced::Center),
-    )
-    .into()
-}
-
-fn modal<'a>(
-    base: impl Into<Element<'a, Message>>,
-    content: Container<'a, Message, Theme, Renderer>,
-    on_blur: Message,
-) -> Element<'a, Message>
-where
-    Message: Clone + 'a,
-{
-    stack![
-        base.into(),
-        button("")
-            .style(|_, _| button::Style {
-                background: Some(
-                    Color {
-                        a: 0.8,
-                        ..Color::BLACK
-                    }
-                    .into()
-                ),
-                ..button::Style::default()
-            })
-            .on_press(on_blur)
-            .width(Length::Fill)
-            .height(Length::Fill),
-        center(content),
-    ]
-    .width(Length::Fill)
-    .height(Length::Fill)
-    .into()
 }

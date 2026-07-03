@@ -10,7 +10,7 @@ use crate::AppPolling::Not;
 use crate::{load_config, save_config, App, AppPolling, Message, BIG_SPACING, SPACING};
 use iced::widget::{
     button, checkbox, column, container, pick_list, row, rule, text, text_input, tooltip,
-    Button, Checkbox, Column, Container, PickList, Text, TextInput,
+    Button, Checkbox, Column, PickList, Text, TextInput,
 };
 use iced::{Center, Element, Length, Renderer, Task, Theme};
 use iced_aw::number_input;
@@ -277,22 +277,13 @@ impl App {
             .height(Length::Fill)
             .style(container::rounded_box);
 
-        Container::new(
-            row![
-                container(form).width(Length::FillPortion(2)).max_width(600),
-                container(results).width(Length::FillPortion(3)),
-            ]
-            .spacing(SPACING * 2),
-        )
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .into()
+        crate::widgets::split_pane(form, results)
     }
 }
 
 fn get_state_view(state: &PollState) -> Element<'static, Message, Theme, Renderer> {
     if state.phase.is_none() {
-        crate::empty_panel("📊", "No poll running yet")
+        crate::widgets::empty_panel("📊", "No poll running yet")
     } else {
         let (winner, popular_winner, point_winner) =
             get_winners(&state.current_state.clone().unwrap());

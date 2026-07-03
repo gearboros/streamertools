@@ -9,8 +9,8 @@ use crate::{
     load_config, prediction, save_config, style, App, AppPolling, Message, BIG_SPACING, SPACING,
 };
 use iced::widget::{
-    button, column, container, pick_list, row, rule, text, text_input, tooltip, Button,
-    Column, Container, PickList, Text, TextInput,
+    button, column, container, pick_list, row, rule, text, text_input, tooltip, Button, Column,
+    PickList, Text, TextInput,
 };
 use iced::{Center, Element, Length, Renderer, Task, Theme};
 use iced_aw::number_input;
@@ -61,7 +61,7 @@ pub enum PredictionMessage {
 
 fn get_state_view(state: &PredictionState) -> Element<'static, Message, Theme, Renderer> {
     if state.phase.is_none() {
-        crate::empty_panel("🎲", "No prediction running yet")
+        crate::widgets::empty_panel("🎲", "No prediction running yet")
     } else if state.phase == Some(PredictionStatus::Active) {
         column![
             Text::new("Voting active, currently at:"),
@@ -602,15 +602,6 @@ impl App {
             .height(Length::Fill)
             .style(container::rounded_box);
 
-        Container::new(
-            row![
-                container(form).width(Length::FillPortion(2)).max_width(600),
-                container(results).width(Length::FillPortion(3)),
-            ]
-            .spacing(SPACING * 2),
-        )
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .into()
+        crate::widgets::split_pane(form, results)
     }
 }

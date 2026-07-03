@@ -14,7 +14,7 @@ fn darken(color: Color) -> Color {
     darken_by_factor(color, 0.5f32)
 }
 
-fn sligthly_darken(color: Color) -> Color {
+fn slightly_darken(color: Color) -> Color {
     darken_by_factor(color, 0.3f32)
 }
 
@@ -175,7 +175,7 @@ mod tests {
 
 pub fn prediction_button(color: &str, status: button::Status, is_active: bool) -> Style {
     let base_colour = get_base_color(color);
-    let darker = sligthly_darken(base_colour);
+    let darker = slightly_darken(base_colour);
     let background = match status {
         button::Status::Hovered => base_colour,
         button::Status::Pressed => base_colour,
