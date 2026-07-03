@@ -28,28 +28,28 @@ fn darken_by_factor(color: Color, factor: f32) -> Color {
     }
 }
 
-pub fn neutral_button(_theme: &Theme, status: button::Status) -> button::Style {
+pub fn neutral_button(_theme: &Theme, status: button::Status) -> Style {
     let background = match status {
         button::Status::Hovered => Color::from_rgb8(0x9E, 0x9E, 0x9E),
         button::Status::Pressed => Color::from_rgb8(0x75, 0x75, 0x75),
         button::Status::Disabled => Color::from_rgb8(0xBD, 0xBD, 0xBD),
         button::Status::Active => Color::from_rgb8(0x88, 0x88, 0x88),
     };
-    button::Style {
+    Style {
         background: Some(background.into()),
         text_color: Color::WHITE,
-        ..button::Style::default()
+        ..Style::default()
     }
 }
 
-pub fn dbg_button(_theme: &Theme, status: button::Status) -> button::Style {
+pub fn dbg_button(_theme: &Theme, status: button::Status) -> Style {
     let background = match status {
         button::Status::Hovered => Color::from_rgb8(0xFF, 0xF9, 0x7D),
         button::Status::Pressed => Color::from_rgb8(0xF5, 0x7C, 0x00),
         button::Status::Disabled => Color::from_rgb8(0xFF, 0xE5, 0x8D),
         button::Status::Active => Color::from_rgb8(0xFF, 0xEB, 0x3B),
     };
-    button::Style {
+    Style {
         background: Some(background.into()),
         text_color: Color::BLACK,
         border: iced::border::Border {
@@ -57,35 +57,35 @@ pub fn dbg_button(_theme: &Theme, status: button::Status) -> button::Style {
             width: 1.0,
             radius: 4.0.into(),
         },
-        ..button::Style::default()
+        ..Style::default()
     }
 }
 
-pub fn red_button(_theme: &Theme, status: button::Status) -> button::Style {
+pub fn red_button(_theme: &Theme, status: button::Status) -> Style {
     let background = match status {
         button::Status::Hovered => Color::from_rgb8(0xE5, 0x39, 0x35),
         button::Status::Pressed => Color::from_rgb8(0xB7, 0x1C, 0x1C),
         button::Status::Disabled => Color::from_rgb8(0xE9, 0x9A, 0x9A),
         button::Status::Active => Color::from_rgb8(0xD3, 0x2F, 0x2F),
     };
-    button::Style {
+    Style {
         background: Some(background.into()),
         text_color: Color::WHITE,
-        ..button::Style::default()
+        ..Style::default()
     }
 }
 
-pub fn twitch_button(_theme: &Theme, status: button::Status) -> button::Style {
+pub fn twitch_button(_theme: &Theme, status: button::Status) -> Style {
     let background = match status {
         button::Status::Hovered => Color::from_rgb8(0x77, 0x2C, 0xE8),
         button::Status::Pressed => Color::from_rgb8(0x5C, 0x16, 0xC5),
         button::Status::Disabled => Color::from_rgb8(0x6A, 0x4B, 0xA8),
         button::Status::Active => TWITCH_PURPLE,
     };
-    button::Style {
+    Style {
         background: Some(background.into()),
         text_color: Color::WHITE,
-        ..button::Style::default()
+        ..Style::default()
     }
 }
 
@@ -124,11 +124,11 @@ pub fn thousand_separator(number: i32) -> String {
     out
 }
 
-pub fn get_base_color(color: &str) -> iced::Color {
+pub fn get_base_color(color: &str) -> Color {
     match color {
-        "BLUE" => iced::Color::from_rgb8(0x38, 0x7A, 0xFF),
-        "PINK" => iced::Color::from_rgb8(0xf5, 0x00, 0x9b),
-        &_ => iced::Color::WHITE,
+        "BLUE" => Color::from_rgb8(0x38, 0x7A, 0xFF),
+        "PINK" => Color::from_rgb8(0xf5, 0x00, 0x9b),
+        &_ => Color::WHITE,
     }
 }
 
@@ -188,7 +188,7 @@ pub fn prediction_button(color: &str, status: button::Status, is_active: bool) -
             }
         }
     };
-    button::Style {
+    Style {
         background: Some(background.into()),
         text_color: Color::WHITE,
         border: iced::border::Border {
@@ -196,6 +196,6 @@ pub fn prediction_button(color: &str, status: button::Status, is_active: bool) -
             width: 1.0,
             radius: 0.0.into(),
         },
-        ..button::Style::default()
+        ..Style::default()
     }
 }
