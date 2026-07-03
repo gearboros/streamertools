@@ -22,16 +22,16 @@ use std::collections::HashMap;
 #[derive(Default, Debug, Serialize, Deserialize, Clone)]
 #[serde(default)]
 pub struct PredictionState {
-    pub(crate) title: String,
-    pub(crate) options: Vec<String>,
-    pub(crate) duration: usize,
-    pub(crate) name: String,
+    pub title: String,
+    pub options: Vec<String>,
+    pub duration: usize,
+    pub name: String,
     #[serde(skip_serializing, skip_deserializing)]
-    pub(crate) phase: Option<PredictionStatus>,
+    pub phase: Option<PredictionStatus>,
     #[serde(skip_serializing, skip_deserializing)]
-    pub(crate) current_state: Option<CreatePredictionResponseData>,
+    pub current_state: Option<CreatePredictionResponseData>,
     #[serde(skip_serializing, skip_deserializing)]
-    pub(crate) active_tab: usize,
+    pub active_tab: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -421,7 +421,7 @@ impl App {
         }
     }
 
-    pub(crate) fn get_prediction_tab_content(&self) -> Element<'static, Message, Theme, Renderer> {
+    pub fn get_prediction_tab_content(&self) -> Element<'static, Message, Theme, Renderer> {
         let dropdown: PickList<'_, String, Vec<String>, String, Message> = pick_list(
             self.predictions.clone(),
             self.selected_prediction.clone(),

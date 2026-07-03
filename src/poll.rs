@@ -144,7 +144,7 @@ impl App {
         }
     }
 
-    pub(crate) fn get_poll_tab_content(&self) -> Element<'static, Message, Theme, Renderer> {
+    pub fn get_poll_tab_content(&self) -> Element<'static, Message, Theme, Renderer> {
         let dropdown: PickList<'_, String, Vec<String>, String, Message> =
             pick_list(self.polls.clone(), self.selected_poll.clone(), |t| {
                 Message::Poll(PollMessage::ConfigSelected(t))
