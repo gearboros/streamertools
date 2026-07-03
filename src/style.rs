@@ -1,3 +1,4 @@
+use iced::widget::button::Style;
 use iced::widget::{button, Text};
 use iced::{Background, Color, Theme};
 use iced_aw::style::{tab_bar, Status};
@@ -10,7 +11,15 @@ pub const TWITCH_PURPLE: Color = Color {
 };
 
 fn darken(color: Color) -> Color {
-    let scale = 1.0 - 0.5;
+    darken_by_factor(color, 0.5f32)
+}
+
+fn sligthly_darken(color: Color) -> Color {
+    darken_by_factor(color, 0.3f32)
+}
+
+fn darken_by_factor(color: Color, factor: f32) -> Color {
+    let scale = 1.0 - factor;
     Color {
         r: color.r * scale,
         g: color.g * scale,
@@ -115,6 +124,14 @@ pub fn thousand_separator(number: i32) -> String {
     out
 }
 
+pub fn get_base_color(color: &str) -> iced::Color {
+    match color {
+        "BLUE" => iced::Color::from_rgb8(0x38, 0x7A, 0xFF),
+        "PINK" => iced::Color::from_rgb8(0xf5, 0x00, 0x9b),
+        &_ => iced::Color::WHITE,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::thousand_separator;
@@ -153,5 +170,32 @@ mod tests {
     fn extremes() {
         assert_eq!(thousand_separator(i32::MAX), "2.147.483.647");
         assert_eq!(thousand_separator(i32::MIN), "-2.147.483.648");
+    }
+}
+
+pub fn prediction_button(color: &str, status: button::Status, is_active: bool) -> Style {
+    let base_colour = get_base_color(color);
+    let darker = sligthly_darken(base_colour);
+    let background = match status {
+        button::Status::Hovered => base_colour,
+        button::Status::Pressed => base_colour,
+        button::Status::Disabled => Color::BLACK,
+        button::Status::Active => {
+            if is_active {
+                base_colour
+            } else {
+                darker
+            }
+        }
+    };
+    button::Style {
+        background: Some(background.into()),
+        text_color: Color::WHITE,
+        border: iced::border::Border {
+            color: Color::BLACK,
+            width: 1.0,
+            radius: 0.0.into(),
+        },
+        ..button::Style::default()
     }
 }

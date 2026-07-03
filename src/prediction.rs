@@ -1,17 +1,19 @@
 use crate::sample_data::{prediction_five, prediction_ongoing, prediction_ten, prediction_two};
-use crate::style::{bold_text, thousand_separator, twitch_tab};
+use crate::style::{bold_text, thousand_separator};
 use crate::twitch_api::{
     cancel_prediction, create_prediction, end_prediction, lock_prediction,
     CreatePredictionRequest, CreatePredictionResponseData, EndPredictionRequest, PollChoice, PredictionOutcome,
     PredictionStatus,
 };
-use crate::{load_config, prediction, save_config, App, AppPolling, Message, BIG_SPACING, SPACING};
+use crate::{
+    load_config, prediction, save_config, style, App, AppPolling, Message, BIG_SPACING, SPACING,
+};
 use iced::widget::{
     button, column, container, pick_list, row, rule, text, text_input, tooltip, Button,
     Column, Container, PickList, Text, TextInput,
 };
 use iced::{Center, Element, Length, Renderer, Task, Theme};
-use iced_aw::{number_input, TabBar, TabLabel};
+use iced_aw::number_input;
 use rand::prelude::SliceRandom;
 use rand::rng;
 use serde::{Deserialize, Serialize};
@@ -130,8 +132,8 @@ fn get_points_distribution(
     let mut point_col: Column<_> = column![bold_text("Points".to_string())].spacing(SPACING);
     let mut user_col: Column<_> = column![bold_text("Users".to_string())].spacing(SPACING);
 
-    let mut tab_bar = TabBar::new(|i| Message::Prediction(PredictionMessage::TabSelected(i)));
-    tab_bar = tab_bar.style(twitch_tab);
+    // we have tab_bar at home -> enables custom colors on the tabs.
+    let mut tab_bar = row![];
     let mut tab_content = HashMap::new();
 
     for (idx, o) in by_points.into_iter().enumerate() {
@@ -144,7 +146,12 @@ fn get_points_distribution(
         )));
         user_col = user_col.push(text(format!("{} users, {:.2}%", o.users, user_percent)));
 
-        tab_bar = tab_bar.push(idx, TabLabel::Text(o.title.clone()));
+        let is_active = active_tab == idx;
+        let btn = button(text(o.title.clone()))
+            .style(move |_, status| style::prediction_button(&o.color.clone(), status, is_active))
+            .padding(SPACING as u16)
+            .on_press(Message::Prediction(PredictionMessage::TabSelected(idx)));
+        tab_bar = tab_bar.push(btn);
         let lines = o
             .top_predictors
             .unwrap_or_default()
@@ -174,7 +181,6 @@ fn get_points_distribution(
     } else {
         0
     };
-    tab_bar = tab_bar.set_active_tab(&selected);
 
     let mut content_col: Column<_> = column![].spacing(SPACING);
     match tab_content.get(&selected) {
@@ -360,13 +366,7 @@ impl App {
                     |r| Message::Prediction(PredictionLocked(r)),
                 )
             }
-            PredictionLocked(r) => match r {
-                Ok(()) => {
-                    self.prediction_state.phase = Some(PredictionStatus::Locked);
-                    Task::none()
-                }
-                Err(e) => Task::done(Message::Error(e)),
-            },
+            PredictionLocked(r) => self.set_prediction_phase(r, PredictionStatus::Locked),
             CancelPrediction => {
                 let token = self.access_token.clone().unwrap_or_default();
                 let request = self.create_end_prediction_request();
@@ -376,13 +376,7 @@ impl App {
                     |r| Message::Prediction(PredictionCanceled(r)),
                 )
             }
-            PredictionCanceled(r) => match r {
-                Ok(()) => {
-                    self.prediction_state.phase = Some(PredictionStatus::Canceled);
-                    Task::none()
-                }
-                Err(e) => Task::done(Message::Error(e)),
-            },
+            PredictionCanceled(r) => self.set_prediction_phase(r, PredictionStatus::Canceled),
             ResetPrediction => {
                 self.prediction_state.phase = None;
                 Task::none()
@@ -396,6 +390,20 @@ impl App {
                 self.prediction_state.active_tab = idx;
                 Task::none()
             }
+        }
+    }
+
+    fn set_prediction_phase(
+        &mut self,
+        result: Result<(), String>,
+        phase: PredictionStatus,
+    ) -> Task<Message> {
+        match result {
+            Ok(()) => {
+                self.prediction_state.phase = Some(phase);
+                Task::none()
+            }
+            Err(e) => Task::done(Message::Error(e)),
         }
     }
 
@@ -428,12 +436,12 @@ impl App {
         }
         let new_btn: Button<_> = button("New")
             .on_press(Message::Prediction(PredictionMessage::NewConfig))
-            .style(crate::style::neutral_button);
+            .style(style::neutral_button);
 
         let can_save =
             self.prediction_loaded || !self.predictions.contains(&self.prediction_state.name);
 
-        let save_btn = button("Save").style(crate::style::neutral_button);
+        let save_btn = button("Save").style(style::neutral_button);
         let save_elem: Element<'_, Message> = if can_save {
             save_btn
                 .on_press(Message::Prediction(PredictionMessage::SaveConfig))
@@ -463,7 +471,7 @@ impl App {
                     });
                 let mut rem_btn = button(text("-").center())
                     .width(30)
-                    .style(crate::style::red_button);
+                    .style(style::red_button);
                 if state.options.len() > 2 && state.phase.is_none() {
                     rem_btn =
                         rem_btn.on_press(Message::Prediction(PredictionMessage::RemoveOption(idx)));
@@ -521,14 +529,14 @@ impl App {
         if state.phase == Some(PredictionStatus::Active) {
             lock_btn = lock_btn.on_press(Message::Prediction(PredictionMessage::LockPrediction));
         }
-        let mut cancel_btn = button("Cancel").style(crate::style::red_button);
+        let mut cancel_btn = button("Cancel").style(style::red_button);
         if state.phase == Some(PredictionStatus::Active)
             || state.phase == Some(PredictionStatus::Locked)
         {
             cancel_btn =
                 cancel_btn.on_press(Message::Prediction(PredictionMessage::CancelPrediction));
         }
-        let mut reset_btn = button("Reset").style(crate::style::neutral_button);
+        let mut reset_btn = button("Reset").style(style::neutral_button);
         if state.phase == Some(PredictionStatus::Resolved)
             || state.phase == Some(PredictionStatus::Canceled)
         {
@@ -537,24 +545,27 @@ impl App {
         let btn_row = row![submit_btn, lock_btn, cancel_btn, reset_btn].spacing(SPACING);
         let mut dbg_row = column![];
         if self.debug {
-            let two_option_sample = button("Two Options")
-                .style(crate::style::dbg_button)
-                .on_press(Message::Prediction(PredictionMessage::LoadSampleData(
-                    prediction_two(),
-                )));
-            let five_option_sample = button("Five Options")
-                .style(crate::style::dbg_button)
-                .on_press(Message::Prediction(PredictionMessage::LoadSampleData(
-                    prediction_five(),
-                )));
-            let ten_option_sample = button("Ten Options")
-                .style(crate::style::dbg_button)
-                .on_press(Message::Prediction(PredictionMessage::LoadSampleData(
-                    prediction_ten(),
-                )));
+            let two_option_sample =
+                button("Two Options")
+                    .style(style::dbg_button)
+                    .on_press(Message::Prediction(PredictionMessage::LoadSampleData(
+                        prediction_two(),
+                    )));
+            let five_option_sample =
+                button("Five Options")
+                    .style(style::dbg_button)
+                    .on_press(Message::Prediction(PredictionMessage::LoadSampleData(
+                        prediction_five(),
+                    )));
+            let ten_option_sample =
+                button("Ten Options")
+                    .style(style::dbg_button)
+                    .on_press(Message::Prediction(PredictionMessage::LoadSampleData(
+                        prediction_ten(),
+                    )));
             let ongoing_sample =
                 button("Ongoing")
-                    .style(crate::style::dbg_button)
+                    .style(style::dbg_button)
                     .on_press(Message::Prediction(PredictionMessage::LoadSampleData(
                         prediction_ongoing(),
                     )));

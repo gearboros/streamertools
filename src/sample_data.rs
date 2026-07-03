@@ -75,6 +75,7 @@ fn outcome(
     users: i32,
     channel_points: i32,
     color: &str,
+    factor: i32,
 ) -> PredictionOutcome {
     PredictionOutcome {
         id: id.to_string(),
@@ -82,9 +83,9 @@ fn outcome(
         users,
         channel_points,
         top_predictors: Some(vec![
-            predictor("Alice", 12_000, 18_000),
-            predictor("Bob", 8_500, 12_750),
-            predictor("Carol", 3_000, 4_500),
+            predictor("Alice", 12_000 * factor, 18_000 * factor),
+            predictor("Bob", 8_500 * factor, 12_750 * factor),
+            predictor("Carol", 3_000 * factor, 4_500 * factor),
         ]),
         color: color.to_string(),
     }
@@ -105,15 +106,15 @@ fn prediction(outcomes: Vec<PredictionOutcome>) -> CreatePredictionResponseData 
 
 pub fn prediction_two() -> CreatePredictionResponseData {
     prediction(vec![
-        outcome("1", "Yes", 120, 45_000, "BLUE"),
-        outcome("2", "No", 80, 30_000, "PINK"),
+        outcome("1", "Yes", 120, 45_000, "BLUE", 2),
+        outcome("2", "No", 80, 30_000, "PINK", 3),
     ])
 }
 
 pub fn prediction_ongoing() -> CreatePredictionResponseData {
     let outcomes = vec![
-        outcome("1", "Yes", 120, 45_000, "BLUE"),
-        outcome("2", "No", 80, 30_000, "PINK"),
+        outcome("1", "Yes", 120, 45_000, "BLUE", 2),
+        outcome("2", "No", 80, 30_000, "PINK", 5),
     ];
     CreatePredictionResponseData {
         id: "test-prediction".to_string(),
@@ -129,11 +130,11 @@ pub fn prediction_ongoing() -> CreatePredictionResponseData {
 
 pub fn prediction_five() -> CreatePredictionResponseData {
     prediction(vec![
-        outcome("1", "Outcome 1", 90, 30_000, "BLUE"),
-        outcome("2", "Outcome 2", 70, 22_000, "PINK"),
-        outcome("3", "Outcome 3", 55, 18_500, "BLUE"),
-        outcome("4", "Outcome 4", 40, 12_000, "PINK"),
-        outcome("5", "Outcome 5", 25, 6_500, "BLUE"),
+        outcome("1", "Outcome 1", 90, 30_000, "BLUE", 1),
+        outcome("2", "Outcome 2", 70, 22_000, "PINK", 2),
+        outcome("3", "Outcome 3", 55, 18_500, "BLUE", 3),
+        outcome("4", "Outcome 4", 40, 12_000, "PINK", 4),
+        outcome("5", "Outcome 5", 25, 6_500, "BLUE", 5),
     ])
 }
 
@@ -147,6 +148,7 @@ pub fn prediction_ten() -> CreatePredictionResponseData {
                 110 - i * 10,
                 (11 - i) * 4000,
                 color,
+                i,
             )
         })
         .collect();
