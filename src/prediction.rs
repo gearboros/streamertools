@@ -298,30 +298,27 @@ impl App {
                 Task::none()
             }
             Submit => {
-                let access_token = self.access_token.clone();
-                if let Some(token) = access_token {
-                    let request = CreatePredictionRequest {
-                        broadcaster_id: self.broadcaster_id.clone().unwrap_or_default(),
-                        title: self.prediction.form.title.clone(),
-                        outcomes: self
-                            .prediction
-                            .form
-                            .options
-                            .iter()
-                            .map(|o| PollChoice { title: o.clone() })
-                            .collect(),
-                        prediction_window: self.prediction.form.duration * 60,
-                    };
-                    let client = self.client.clone();
-                    Task::perform(
-                        async move { create_prediction(&client, &token, request).await },
-                        |r| Message::Prediction(PredictionCreated(r)),
-                    )
-                } else {
-                    Task::done(Message::Error(
-                        "Missing Auth token! Try to re-authenticate".to_string(),
-                    ))
-                }
+                let (token, broadcaster_id) = match self.require_token_and_broadcaster_id() {
+                    Ok(v) => v,
+                    Err(e) => return Self::log_and_show_error(&e),
+                };
+                let request = CreatePredictionRequest {
+                    broadcaster_id,
+                    title: self.prediction.form.title.clone(),
+                    outcomes: self
+                        .prediction
+                        .form
+                        .options
+                        .iter()
+                        .map(|o| PollChoice { title: o.clone() })
+                        .collect(),
+                    prediction_window: self.prediction.form.duration * 60,
+                };
+                let client = self.client.clone();
+                Task::perform(
+                    async move { create_prediction(&client, &token, request).await },
+                    |r| Message::Prediction(PredictionCreated(r)),
+                )
             }
             PredictionCreated(r) => self.set_prediction_phase(r),
             DurationChange(d) => {
@@ -329,24 +326,26 @@ impl App {
                 Task::none()
             }
             WinnerChosen(id) => {
-                if let PredictionRun::Live(d) = &self.prediction.run {
-                    let token = self.access_token.clone().unwrap_or_default();
-                    let prediction_id = d.id.clone();
-                    let request = EndPredictionRequest {
-                        outcome_id: id,
-                        broadcaster_id: self.broadcaster_id.clone().unwrap_or_default(),
-                        prediction_id,
-                    };
-                    let client = self.client.clone();
-                    Task::perform(
-                        async move { end_prediction(&client, request, &token).await },
-                        |r| Message::Prediction(PredictionEnded(r)),
-                    )
-                } else {
-                    Task::done(Message::Error(
-                        "Should have prediction state here.".to_string(),
-                    ))
-                }
+                let (token, broadcaster_id) = match self.require_token_and_broadcaster_id() {
+                    Ok(v) => v,
+                    Err(e) => return Self::log_and_show_error(&e),
+                };
+                let PredictionRun::Live(d) = &self.prediction.run else {
+                    return Self::log_and_show_error(
+                        "No active prediction when trying to choose winner.",
+                    );
+                };
+                let prediction_id = d.id.clone();
+                let request = EndPredictionRequest {
+                    outcome_id: id,
+                    broadcaster_id,
+                    prediction_id,
+                };
+                let client = self.client.clone();
+                Task::perform(
+                    async move { end_prediction(&client, request, &token).await },
+                    |r| Message::Prediction(PredictionEnded(r)),
+                )
             }
             PredictionEnded(r) => self.set_prediction_phase(r),
             ConfigSelected(c) => {
@@ -360,8 +359,11 @@ impl App {
                 Task::none()
             }
             LockPrediction => {
-                let token = self.access_token.clone().unwrap_or_default();
-                match self.create_end_prediction_request() {
+                let (token, broadcaster_id) = match self.require_token_and_broadcaster_id() {
+                    Ok(v) => v,
+                    Err(e) => return Self::log_and_show_error(&e),
+                };
+                match self.create_end_prediction_request(broadcaster_id) {
                     Ok(request) => {
                         let client = self.client.clone();
                         Task::perform(
@@ -374,8 +376,11 @@ impl App {
             }
             PredictionLocked(r) => self.set_prediction_phase(r),
             CancelPrediction => {
-                let token = self.access_token.clone().unwrap_or_default();
-                match self.create_end_prediction_request() {
+                let (token, broadcaster_id) = match self.require_token_and_broadcaster_id() {
+                    Ok(v) => v,
+                    Err(e) => return Self::log_and_show_error(&e),
+                };
+                match self.create_end_prediction_request(broadcaster_id) {
                     Ok(request) => {
                         let client = self.client.clone();
                         Task::perform(
@@ -415,12 +420,15 @@ impl App {
         }
     }
 
-    fn create_end_prediction_request(&self) -> Result<EndPredictionRequest, String> {
+    fn create_end_prediction_request(
+        &self,
+        broadcaster_id: String,
+    ) -> Result<EndPredictionRequest, String> {
         if let PredictionRun::Live(d) = &self.prediction.run {
             let prediction_id = d.id.clone();
             Ok(EndPredictionRequest {
                 outcome_id: String::new(),
-                broadcaster_id: self.broadcaster_id.clone().unwrap_or_default(),
+                broadcaster_id,
                 prediction_id,
             })
         } else {

@@ -128,20 +128,26 @@ impl App {
                 Task::none()
             }
             Message::PredictionTick => {
-                let broadcaster_id = self.get_broadcaster_id();
-                if let PredictionRun::Live(d) = &self.prediction.run {
-                    let pred_id = d.id.clone();
-                    let token = self.get_token();
-                    let client = self.client.clone();
-                    Task::perform(
-                        async move {
-                            check_prediction(&client, &broadcaster_id, &pred_id, &token).await
-                        },
-                        Message::PredictionPolled,
-                    )
-                } else {
-                    Task::done(Message::Error("No Prediction data to query.".to_string()))
-                }
+                let PredictionRun::Live(d) = &self.prediction.run else {
+                    warn!("No active prediction when trying to poll prediction.");
+                    return Task::none();
+                };
+                let (token, broadcaster_id) = match self.require_token_and_broadcaster_id() {
+                    Ok(v) => v,
+                    Err(e) => {
+                        warn!(
+                            "No Broadcaster Id and/or token when trying to poll predictions: {}.",
+                            e
+                        );
+                        return Task::none();
+                    }
+                };
+                let pred_id = d.id.clone();
+                let client = self.client.clone();
+                Task::perform(
+                    async move { check_prediction(&client, &broadcaster_id, &pred_id, &token).await },
+                    Message::PredictionPolled,
+                )
             }
             Message::PredictionPolled(resp) => match resp {
                 Ok(r) => {
@@ -154,18 +160,23 @@ impl App {
                 }
             },
             Message::PollTick => {
-                let broadcaster_id = self.get_broadcaster_id();
-                if let PollRun::Live(d) = &self.poll.run {
-                    let poll_id = d.id.clone();
-                    let token = self.get_token();
-                    let client = self.client.clone();
-                    Task::perform(
-                        async move { check_poll(&client, &broadcaster_id, &poll_id, &token).await },
-                        Message::PollPolled,
-                    )
-                } else {
-                    Task::done(Message::Error("No Poll data to query.".to_string()))
-                }
+                let PollRun::Live(d) = &self.poll.run else {
+                    warn!("No active poll when trying to poll poll.");
+                    return Task::none();
+                };
+                let (token, broadcaster_id) = match self.require_token_and_broadcaster_id() {
+                    Ok(v) => v,
+                    Err(e) => {
+                        warn!("No token/broadcaster id whent trying to poll poll: {}", e);
+                        return Task::none();
+                    }
+                };
+                let poll_id = d.id.clone();
+                let client = self.client.clone();
+                Task::perform(
+                    async move { check_poll(&client, &broadcaster_id, &poll_id, &token).await },
+                    Message::PollPolled,
+                )
             }
             Message::PollPolled(resp) => match resp {
                 Ok(r) => {
@@ -448,16 +459,22 @@ impl App {
             .collect())
     }
 
-    fn get_broadcaster_id(&self) -> String {
-        self.broadcaster_id
+    fn require_token_and_broadcaster_id(&self) -> Result<(String, String), String> {
+        let token = self
+            .access_token
             .clone()
-            .expect("Should have broadcaster Id here")
+            .ok_or_else(|| "Missing auth token! Try to re-authenticate.".to_string())?;
+        let broadcaster = self
+            .broadcaster_id
+            .clone()
+            .ok_or_else(|| "Missing broadcaster id! Try to re-authenticate.".to_string())?;
+        Ok((token, broadcaster))
     }
 
-    fn get_token(&self) -> String {
-        self.access_token
-            .clone()
-            .expect("Should have access token.")
+    fn log_and_show_error(e: &str) -> Task<Message> {
+        let err = format!("Could not end poll: {}", e);
+        warn!(err);
+        Task::done(Message::Error(err))
     }
 }
 

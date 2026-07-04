@@ -50,32 +50,29 @@ impl App {
                 Task::none()
             }
             Submit => {
-                let access_token = self.access_token.clone();
-                if let Some(token) = access_token {
-                    let request = CreatePollRequest {
-                        broadcaster_id: self.broadcaster_id.clone().unwrap_or_default(),
-                        title: self.poll.form.title.clone(),
-                        choices: self
-                            .poll
-                            .form
-                            .options
-                            .iter()
-                            .map(|o| PollChoice { title: o.clone() })
-                            .collect(),
-                        duration: self.poll.form.duration * 60,
-                        channel_points_voting_enabled: self.poll.form.uses_channel_points,
-                        channel_points_per_vote: self.poll.form.channel_point_cost,
-                    };
-                    let client = self.client.clone();
-                    Task::perform(
-                        async move { create_poll(&client, &token, request).await },
-                        |r| Message::Poll(PollCreated(r)),
-                    )
-                } else {
-                    Task::done(Message::Error(
-                        "Missing Auth token! Try to re-authenticate".to_string(),
-                    ))
-                }
+                let (token, broadcaster_id) = match self.require_token_and_broadcaster_id() {
+                    Ok(v) => v,
+                    Err(e) => return Self::log_and_show_error(&e),
+                };
+                let request = CreatePollRequest {
+                    broadcaster_id,
+                    title: self.poll.form.title.clone(),
+                    choices: self
+                        .poll
+                        .form
+                        .options
+                        .iter()
+                        .map(|o| PollChoice { title: o.clone() })
+                        .collect(),
+                    duration: self.poll.form.duration * 60,
+                    channel_points_voting_enabled: self.poll.form.uses_channel_points,
+                    channel_points_per_vote: self.poll.form.channel_point_cost,
+                };
+                let client = self.client.clone();
+                Task::perform(
+                    async move { create_poll(&client, &token, request).await },
+                    |r| Message::Poll(PollCreated(r)),
+                )
             }
             OptionChanged(idx, val) => {
                 if let Some(o) = self.poll.form.options.get_mut(idx) {
@@ -107,18 +104,19 @@ impl App {
                 Task::none()
             }
             EndPoll => {
-                let token = self.access_token.clone().unwrap_or_default();
-                let broadcaster = self.broadcaster_id.clone().unwrap_or_default();
+                let (token, broadcaster_id) = match self.require_token_and_broadcaster_id() {
+                    Ok(v) => v,
+                    Err(e) => return Self::log_and_show_error(&e),
+                };
+                let PollRun::Live(d) = &self.poll.run else {
+                    return Self::log_and_show_error("No current poll when trying to end a poll");
+                };
+                let poll_id = d.id.clone();
                 let client = self.client.clone();
-                if let PollRun::Live(d) = &self.poll.run {
-                    let poll_id = d.id.clone();
-                    Task::perform(
-                        async move { end_poll(&client, &broadcaster, &poll_id, &token).await },
-                        |r| Message::Poll(PollEnded(r)),
-                    )
-                } else {
-                    Task::done(Message::Error("No poll data to end.".to_string()))
-                }
+                Task::perform(
+                    async move { end_poll(&client, &broadcaster_id, &poll_id, &token).await },
+                    |r| Message::Poll(PollEnded(r)),
+                )
             }
             PollEnded(r) => self.set_poll_run(r),
             SaveConfig => {
