@@ -6,13 +6,10 @@ use crate::twitch_api::{
     CreatePredictionRequest, CreatePredictionResponseData, EndPredictionRequest, PollChoice, PredictionOutcome,
     PredictionStatus,
 };
+use crate::widgets::{config_bar, duration_row, option_editor};
 use crate::{load_config, prediction, save_config, style, App, Message, BIG_SPACING, SPACING};
-use iced::widget::{
-    button, column, container, pick_list, row, rule, text, text_input, tooltip, Button, Column,
-    PickList, Text, TextInput,
-};
+use iced::widget::{button, column, container, row, rule, text, text_input, Column, Text};
 use iced::{Center, Element, Length, Renderer, Task, Theme};
-use iced_aw::number_input;
 use rand::prelude::SliceRandom;
 use rand::rng;
 use serde::{Deserialize, Serialize};
@@ -437,12 +434,6 @@ impl App {
     }
 
     pub fn get_prediction_tab_content(&self) -> Element<'static, Message, Theme, Renderer> {
-        let dropdown: PickList<'_, String, Vec<String>, String, Message> = pick_list(
-            self.prediction.configs.items.clone(),
-            self.prediction.configs.selected.clone(),
-            |t| Message::Prediction(PredictionMessage::ConfigSelected(t)),
-        )
-        .placeholder("Select a config to load");
         let state = self.prediction.form.clone();
         let editable = self.prediction.run == PredictionRun::Idle;
         let phase = if let PredictionRun::Live(d) = &self.prediction.run {
@@ -451,59 +442,26 @@ impl App {
             None
         };
 
-        let mut name_input: TextInput<_> = text_input("Config Name", &state.name);
-        if !self.prediction.configs.loaded {
-            name_input =
-                name_input.on_input(|n| Message::Prediction(PredictionMessage::NameChanged(n)));
-        }
-        let new_btn: Button<_> = button("New")
-            .on_press(Message::Prediction(PredictionMessage::NewConfig))
-            .style(style::neutral_button);
-
-        let can_save = self.prediction.configs.loaded
-            || !self
-                .prediction
-                .configs
-                .items
-                .contains(&self.prediction.form.name);
-
-        let save_btn = button("Save").style(style::neutral_button);
-        let save_elem: Element<'_, Message> = if can_save {
-            save_btn
-                .on_press(Message::Prediction(PredictionMessage::SaveConfig))
-                .into()
-        } else {
-            tooltip(
-                save_btn,
-                container("Config with this name already exists, to change load the config first.")
-                    .padding(10)
-                    .style(container::dark),
-                tooltip::Position::Bottom,
-            )
-            .into()
-        };
-
-        let save_row = row![dropdown, name_input, new_btn, save_elem].spacing(SPACING);
+        let save_row = config_bar(
+            &self.prediction.configs,
+            &state.name,
+            |t| Message::Prediction(PredictionMessage::ConfigSelected(t)),
+            |n| Message::Prediction(PredictionMessage::NameChanged(n)),
+            Message::Prediction(PredictionMessage::NewConfig),
+            Message::Prediction(PredictionMessage::SaveConfig),
+        );
 
         let title_input = text_input("Prediction title", &state.title)
             .on_input(|r| Message::Prediction(PredictionMessage::TitleChanged(r)));
         let mut opt_col: Column<_> = iced::widget::column![].spacing(SPACING);
 
         if editable {
-            for (idx, option) in state.options.iter().enumerate() {
-                let input =
-                    text_input(format!("Option {}", idx + 1).as_str(), option).on_input(move |s| {
-                        Message::Prediction(PredictionMessage::OptionChanged(idx, s))
-                    });
-                let mut rem_btn = button(text("-").center())
-                    .width(30)
-                    .style(style::red_button);
-                if state.options.len() > 2 {
-                    rem_btn =
-                        rem_btn.on_press(Message::Prediction(PredictionMessage::RemoveOption(idx)));
-                }
-                opt_col = opt_col.push(row![rem_btn, input].spacing(SPACING));
-            }
+            opt_col = option_editor(
+                &state.options,
+                editable,
+                |i, s| Message::Prediction(PredictionMessage::OptionChanged(i, s)),
+                |idx| Message::Prediction(PredictionMessage::RemoveOption(idx)),
+            );
         } else {
             let options = if let PredictionRun::Live(d) = &self.prediction.run {
                 d.outcomes.clone()
@@ -538,15 +496,9 @@ impl App {
             option_btn_row = option_btn_row.push(shuffle_btn)
         }
 
-        let duration_text = Text::new("Duration in mins: ");
-        let mut duration_inp = number_input(&state.duration, 1..=30, |d| {
+        let duration_row = duration_row(editable, &state.duration, |d| {
             Message::Prediction(PredictionMessage::DurationChange(d))
         });
-        if !editable {
-            duration_inp = duration_inp.on_input_maybe(None::<fn(usize) -> Message>);
-        }
-
-        let duration_row = row![duration_text, duration_inp].align_y(Center);
 
         let mut submit_btn = button("Submit");
         if editable {

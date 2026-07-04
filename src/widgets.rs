@@ -1,6 +1,11 @@
-use crate::{Message, SPACING};
-use iced::widget::{button, center, column, container, row, stack, text, Container};
-use iced::{Color, Element, Length, Renderer, Theme};
+use crate::config::ConfigList;
+use crate::{style, Message, SPACING};
+use iced::widget::{
+    button, center, column, container, pick_list, row, stack, text, text_input, tooltip, Button,
+    Column, Container, PickList, Row, Text, TextInput,
+};
+use iced::{Center, Color, Element, Length, Renderer, Theme};
+use iced_aw::number_input;
 
 pub fn empty_panel(
     icon: &'static str,
@@ -59,4 +64,81 @@ where
     .width(Length::Fill)
     .height(Length::Fill)
     .into()
+}
+
+pub fn config_bar(
+    configs: &ConfigList,
+    name: &str,
+    on_select: impl Fn(String) -> Message + 'static,
+    on_name_change: impl Fn(String) -> Message + 'static,
+    on_new: Message,
+    on_save: Message,
+) -> Element<'static, Message> {
+    let dropdown: PickList<'_, String, Vec<String>, String, Message> =
+        pick_list(configs.items.clone(), configs.selected.clone(), on_select)
+            .placeholder("Select a config to load");
+
+    let mut name_input: TextInput<_> = text_input("Config Name", name);
+    if !configs.loaded {
+        name_input = name_input.on_input(on_name_change);
+    }
+    let new_btn: Button<_> = button("New").on_press(on_new).style(style::neutral_button);
+
+    let can_save = configs.loaded || !configs.items.iter().any(|i| i == name);
+
+    let save_btn = button("Save").style(style::neutral_button);
+    let save_elem: Element<'_, Message> = if can_save {
+        save_btn.on_press(on_save).into()
+    } else {
+        tooltip(
+            save_btn,
+            container("Config with this name already exists, to change load the config first.")
+                .padding(10)
+                .style(container::dark),
+            tooltip::Position::Bottom,
+        )
+        .into()
+    };
+
+    row![dropdown, name_input, new_btn, save_elem]
+        .spacing(SPACING)
+        .into()
+}
+
+pub fn option_editor(
+    options: &[String],
+    editable: bool,
+    on_change: impl Fn(usize, String) -> Message + Clone + 'static,
+    on_remove: impl Fn(usize) -> Message + 'static,
+) -> Column<'static, Message> {
+    let mut opt_col = column![].spacing(SPACING);
+    for (idx, option) in options.iter().enumerate() {
+        let on_change = on_change.clone();
+        let mut input = text_input(format!("Option {}", idx + 1).as_str(), option);
+        if editable {
+            input = input.on_input(move |s| on_change(idx, s));
+        }
+        let mut rem_btn = button(text("-").center())
+            .width(30)
+            .style(style::red_button);
+        if editable && options.len() > 2 {
+            rem_btn = rem_btn.on_press(on_remove(idx));
+        }
+        opt_col = opt_col.push(row![rem_btn, input].spacing(SPACING));
+    }
+    opt_col
+}
+
+pub fn duration_row(
+    editable: bool,
+    duration: &usize,
+    on_change: impl Fn(usize) -> Message + Copy + 'static,
+) -> Row<'static, Message> {
+    let duration_text = Text::new("Duration in mins: ");
+    let mut duration_inp = number_input(duration, 1..=30, move |d| on_change(d));
+    if !editable {
+        duration_inp = duration_inp.on_input_maybe(None::<fn(usize) -> Message>)
+    }
+
+    row![duration_text, duration_inp].align_y(Center)
 }

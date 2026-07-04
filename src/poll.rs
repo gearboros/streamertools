@@ -7,10 +7,10 @@ use crate::style::{bold_text, thousand_separator};
 use crate::twitch_api::{
     create_poll, end_poll, CreatePollRequest, PollChoice, PollChoiceState, PollPhase, PollStateData,
 };
+use crate::widgets::{config_bar, duration_row, option_editor};
 use crate::{load_config, save_config, App, Message, BIG_SPACING, SPACING};
 use iced::widget::{
-    button, checkbox, column, container, pick_list, row, rule, text, text_input, tooltip,
-    Button, Checkbox, Column, PickList, Text, TextInput,
+    button, checkbox, column, container, row, rule, text, text_input, Checkbox, Column, Text,
 };
 use iced::{Center, Element, Length, Renderer, Task, Theme};
 use iced_aw::number_input;
@@ -172,12 +172,6 @@ impl App {
     }
 
     pub fn get_poll_tab_content(&self) -> Element<'static, Message, Theme, Renderer> {
-        let dropdown: PickList<'_, String, Vec<String>, String, Message> = pick_list(
-            self.poll.configs.items.clone(),
-            self.poll.configs.selected.clone(),
-            |t| Message::Poll(PollMessage::ConfigSelected(t)),
-        )
-        .placeholder("Select a config to load");
         let state = self.poll.form.clone();
         let editable = self.poll.run == PollRun::Idle;
         let phase = if let PollRun::Live(d) = &self.poll.run {
@@ -186,49 +180,24 @@ impl App {
             None
         };
 
-        let mut name_input: TextInput<_> = text_input("Config Name", &state.name);
-        if !self.poll.configs.loaded {
-            name_input = name_input.on_input(|n| Message::Poll(PollMessage::NameChanged(n)));
-        }
-        let new_btn: Button<_> = button("New")
-            .on_press(Message::Poll(PollMessage::NewConfig))
-            .style(crate::style::neutral_button);
-
-        let can_save =
-            self.poll.configs.loaded || !self.poll.configs.items.contains(&self.poll.form.name);
-
-        let save_btn = button("Save").style(crate::style::neutral_button);
-        let save_elem: Element<'_, Message> = if can_save {
-            save_btn
-                .on_press(Message::Poll(PollMessage::SaveConfig))
-                .into()
-        } else {
-            tooltip(
-                save_btn,
-                container("Config with this name already exists, to change load the config first.")
-                    .padding(10)
-                    .style(container::dark),
-                tooltip::Position::Bottom,
-            )
-            .into()
-        };
-
-        let save_row = row![dropdown, name_input, new_btn, save_elem].spacing(SPACING);
+        let save_row = config_bar(
+            &self.poll.configs,
+            &state.name,
+            |t| Message::Poll(PollMessage::ConfigSelected(t)),
+            |n| Message::Poll(PollMessage::NameChanged(n)),
+            Message::Poll(PollMessage::NewConfig),
+            Message::Poll(PollMessage::SaveConfig),
+        );
 
         let title_input = text_input("Poll title", &state.title)
             .on_input(|r| Message::Poll(PollMessage::TitleChanged(r)));
-        let mut opt_col: Column<_> = iced::widget::column![].spacing(SPACING);
-        for (idx, option) in state.options.iter().enumerate() {
-            let input = text_input(format!("Option {}", idx + 1).as_str(), option)
-                .on_input(move |s| Message::Poll(PollMessage::OptionChanged(idx, s)));
-            let mut rem_btn = button(text("-").center())
-                .width(30)
-                .style(crate::style::red_button);
-            if state.options.len() > 2 {
-                rem_btn = rem_btn.on_press(Message::Poll(PollMessage::RemoveOption(idx)));
-            }
-            opt_col = opt_col.push(row![rem_btn, input].spacing(SPACING));
-        }
+
+        let opt_col = option_editor(
+            &state.options,
+            editable,
+            |i, s| Message::Poll(PollMessage::OptionChanged(i, s)),
+            |idx| Message::Poll(PollMessage::RemoveOption(idx)),
+        );
 
         let mut add_btn = button(text("+").center()).width(30);
         if editable {
@@ -236,15 +205,9 @@ impl App {
         }
         let option_btn_row = row![add_btn].spacing(SPACING);
 
-        let duration_text = Text::new("Duration in mins: ");
-        let mut duration_inp = number_input(&state.duration, 1..=30, |d| {
+        let duration_row = duration_row(editable, &state.duration, |d| {
             Message::Poll(DurationChange(d))
         });
-        if editable {
-            duration_inp = duration_inp.on_input_maybe(None::<fn(usize) -> Message>)
-        }
-
-        let duration_row = row![duration_text, duration_inp].align_y(Center);
 
         let channel_point_check: Checkbox<_> = checkbox(state.uses_channel_points)
             .label("Enable Channel point votes.")
