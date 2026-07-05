@@ -15,6 +15,7 @@ use rand::prelude::SliceRandom;
 use rand::rng;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use tracing::error;
 
 #[derive(Default, Debug)]
 pub struct PredictionTab {
@@ -72,7 +73,18 @@ fn get_state_view(
     if let PredictionRun::Live(current) = run {
         match current.status {
             PredictionStatus::Resolved => {
-                let winner = get_winner(current);
+                let winner = match get_winner(current) {
+                    Ok(w) => w,
+                    Err(e) => {
+                        error!("{}", e);
+                        return column![
+                            Text::new(format!("Could not determine winner: {e}")),
+                            get_points_distribution(&Some(current), active_tab)
+                        ]
+                        .spacing(SPACING)
+                        .into();
+                    }
+                };
                 let total_points = current
                     .outcomes
                     .iter()
@@ -113,16 +125,16 @@ fn get_state_view(
     }
 }
 
-fn get_winner(current: &CreatePredictionResponseData) -> &PredictionOutcome {
+fn get_winner(current: &CreatePredictionResponseData) -> Result<&PredictionOutcome, String> {
     let winner_id = current
         .winning_outcome_id
-        .clone()
-        .expect("Should have a winner here");
+        .as_ref()
+        .ok_or_else(|| "Resolved prediction has no winning outcome.".to_string())?;
     current
         .outcomes
         .iter()
-        .find(|x| x.id == winner_id)
-        .expect("Should have a winner here")
+        .find(|x| &x.id == winner_id)
+        .ok_or_else(|| format!("Winning outcome {winner_id} not found in prediction outcomes."))
 }
 
 fn get_points_distribution(
