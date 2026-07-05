@@ -1,6 +1,7 @@
+use crate::chart::{BarChart, BarData};
 use crate::config::ConfigList;
 use crate::sample_data::{prediction_five, prediction_ongoing, prediction_ten, prediction_two};
-use crate::style::{bold_text, thousand_separator};
+use crate::style::{bold_text, get_base_color, thousand_separator};
 use crate::twitch_api::{
     cancel_prediction, create_prediction, end_prediction, lock_prediction,
     CreatePredictionRequest, CreatePredictionResponseData, EndPredictionRequest, PollChoice, PredictionOutcome,
@@ -8,7 +9,7 @@ use crate::twitch_api::{
 };
 use crate::widgets::{config_bar, duration_row, option_editor};
 use crate::{load_config, prediction, save_config, style, App, Message, BIG_SPACING, SPACING};
-use iced::widget::{button, column, container, row, rule, text, text_input, Column, Text};
+use iced::widget::{button, canvas, column, container, row, rule, text, text_input, Column, Text};
 use iced::{Center, Element, Length, Renderer, Task, Theme};
 use rand::prelude::SliceRandom;
 use rand::rng;
@@ -204,6 +205,21 @@ fn get_points_distribution(
         }
     }
 
+    let bar_chart = canvas(BarChart {
+        data: state
+            .outcomes
+            .clone()
+            .iter()
+            .map(|c| BarData {
+                colour: get_base_color(&c.color),
+                title: c.title.clone(),
+                value: c.channel_points,
+            })
+            .collect(),
+    })
+    .width(Length::Fill)
+    .height(Length::Fill);
+
     container(
         column![
             Text::new(format!(
@@ -214,6 +230,7 @@ fn get_points_distribution(
             grid,
             tab_bar,
             content_col,
+            bar_chart,
         ]
         .spacing(SPACING),
     )

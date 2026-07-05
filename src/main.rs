@@ -1,4 +1,5 @@
 mod auth;
+mod chart;
 mod config;
 mod poll;
 mod prediction;
