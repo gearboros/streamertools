@@ -135,7 +135,7 @@ pub fn duration_row(
     on_change: impl Fn(usize) -> Message + Copy + 'static,
 ) -> Row<'static, Message> {
     let duration_text = Text::new("Duration in mins: ");
-    let mut duration_inp = number_input(duration, 1..=30, move |d| on_change(d));
+    let mut duration_inp = number_input(duration, 1..=30, on_change);
     if !editable {
         duration_inp = duration_inp.on_input_maybe(None::<fn(usize) -> Message>)
     }

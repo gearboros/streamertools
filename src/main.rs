@@ -329,17 +329,15 @@ impl App {
 fn subscription(app: &App) -> Subscription<Message> {
     let mut subs = vec![keyboard::listen().map(Message::Keyboard)];
 
-    if let PollRun::Live(d) = &app.poll.run {
-        if d.status == PollPhase::Active && !app.sample {
+    if let PollRun::Live(d) = &app.poll.run
+        && d.status == PollPhase::Active && !app.sample {
             subs.push(time::every(Duration::from_secs(2)).map(|_| Message::PollTick))
         }
-    }
 
-    if let PredictionRun::Live(d) = &app.prediction.run {
-        if d.status == PredictionStatus::Active && !app.sample {
+    if let PredictionRun::Live(d) = &app.prediction.run
+        && d.status == PredictionStatus::Active && !app.sample {
             subs.push(time::every(Duration::from_secs(2)).map(|_| Message::PredictionTick))
         }
-    }
 
     Subscription::batch(subs)
 }

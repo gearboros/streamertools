@@ -318,14 +318,13 @@ fn get_state_view(state: &PollState, run: &PollRun) -> Element<'static, Message,
                 bold_text(titles(&point_winners))
             ])
         }
-        if let Some(non_tied_winner) = get_non_tied_winner(d) {
-            if !winners.iter().any(|w| w.id == non_tied_winner.id) {
+        if let Some(non_tied_winner) = get_non_tied_winner(d)
+            && !winners.iter().any(|w| w.id == non_tied_winner.id) {
                 col = col.push(row![
                     Text::new(non_tied_label),
                     bold_text(non_tied_winner.title.clone())
                 ])
-            }
-        };
+            };
         col = col.push(get_votes_result(&Some(d), state.channel_point_cost));
         col.spacing(SPACING).into()
     } else {
@@ -396,7 +395,7 @@ fn get_votes_result(
     state: &Option<&PollStateData>,
     cost: usize,
 ) -> Element<'static, Message, Theme, Renderer> {
-    let Some(state) = state.clone() else {
+    let Some(state) = *state else {
         return Text::new("No Poll Active").into();
     };
     let total_votes = state.choices.iter().map(|c| c.votes).sum::<i32>();

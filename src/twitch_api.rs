@@ -177,9 +177,7 @@ pub async fn end_prediction(
     request: EndPredictionRequest,
     access_token: &str,
 ) -> Result<CreatePredictionResponseData, String> {
-    set_prediction_state(client, request, access_token, PredictionStatus::Resolved)
-        .await
-        .map_err(|e| e)
+    set_prediction_state(client, request, access_token, PredictionStatus::Resolved).await
 }
 
 pub async fn lock_prediction(
@@ -187,9 +185,7 @@ pub async fn lock_prediction(
     request: EndPredictionRequest,
     access_token: &str,
 ) -> Result<CreatePredictionResponseData, String> {
-    set_prediction_state(client, request, access_token, PredictionStatus::Locked)
-        .await
-        .map_err(|e| e)
+    set_prediction_state(client, request, access_token, PredictionStatus::Locked).await
 }
 
 pub async fn cancel_prediction(
@@ -197,9 +193,7 @@ pub async fn cancel_prediction(
     request: EndPredictionRequest,
     access_token: &str,
 ) -> Result<CreatePredictionResponseData, String> {
-    set_prediction_state(client, request, access_token, PredictionStatus::Canceled)
-        .await
-        .map_err(|e| e)
+    set_prediction_state(client, request, access_token, PredictionStatus::Canceled).await
 }
 
 async fn set_prediction_state(

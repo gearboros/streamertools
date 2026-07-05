@@ -141,7 +141,7 @@ fn get_points_distribution(
     state: &Option<&CreatePredictionResponseData>,
     active_tab: usize,
 ) -> Element<'static, Message, Theme, Renderer> {
-    let Some(state) = state.clone() else {
+    let Some(state) = *state else {
         return Text::new("No Prediction Active").into();
     };
     let resolved = state.status == PredictionStatus::Resolved;
