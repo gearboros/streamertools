@@ -19,19 +19,19 @@ use directories::ProjectDirs;
 use iced::alignment::Vertical;
 use iced::widget::operation::{focus_next, focus_previous};
 use iced::widget::space::horizontal;
-use iced::widget::{button, column, container, row, text, Container, Text};
-use iced::{keyboard, time, Element, Renderer, Subscription, Task, Theme};
+use iced::widget::{Container, Text, button, column, container, row, text};
+use iced::{Element, Renderer, Subscription, Task, Theme, keyboard, time};
 use iced_aw::{TabBar, TabLabel};
 use poll::PollMessage;
 use prediction::PredictionMessage;
-use serde::de::DeserializeOwned;
 use serde::Serialize;
+use serde::de::DeserializeOwned;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 use tracing::{error, info, warn};
 use tracing_appender::rolling::Rotation;
-use tracing_subscriber::{fmt, prelude::*, EnvFilter};
+use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 use twitch_api::*;
 
 pub const CLIENT_ID: &str = "9w729lqufngx4sztgex20eztz7o879";
@@ -473,7 +473,7 @@ impl App {
     }
 
     fn log_and_show_error(e: &str) -> Task<Message> {
-        let err = format!("Could not end poll: {}", e);
+        let err = format!("Could not perform action due to: {}", e);
         warn!(err);
         Task::done(Message::Error(err))
     }
