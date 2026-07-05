@@ -202,7 +202,7 @@ impl App {
         );
 
         let mut add_btn = button(text("+").center()).width(30);
-        if editable {
+        if editable && state.options.len() < 5 {
             add_btn = add_btn.on_press(Message::Poll(PollMessage::AddOption));
         }
         let option_btn_row = row![add_btn].spacing(SPACING);

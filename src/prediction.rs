@@ -320,7 +320,9 @@ impl App {
         let mut switch_btn = button("Switch Options");
         let mut shuffle_btn = button("Shuffle Options");
         if editable {
-            add_btn = add_btn.on_press(Message::Prediction(PredictionMessage::AddOption));
+            if state.options.len() < 10 {
+                add_btn = add_btn.on_press(Message::Prediction(PredictionMessage::AddOption));
+            }
             switch_btn = switch_btn.on_press(Message::Prediction(PredictionMessage::SwitchOptions));
             shuffle_btn =
                 shuffle_btn.on_press(Message::Prediction(PredictionMessage::SwitchOptions));
