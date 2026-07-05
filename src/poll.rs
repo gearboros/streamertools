@@ -1,7 +1,7 @@
 use crate::config::ConfigList;
 use crate::poll::PollMessage::DurationChange;
 use crate::sample_data::{
-    poll_points_winner, poll_popular_winner, poll_total_winner, running_poll,
+    poll_points_winner, poll_popular_winner, poll_tie, poll_total_winner, running_poll,
 };
 use crate::style::{bold_text, thousand_separator};
 use crate::twitch_api::{
@@ -252,9 +252,12 @@ impl App {
             let running = button("Running")
                 .style(crate::style::dbg_button)
                 .on_press(Message::Poll(PollMessage::LoadSampleData(running_poll())));
+            let tie = button("Two Winners (tie)")
+                .style(crate::style::dbg_button)
+                .on_press(Message::Poll(PollMessage::LoadSampleData(poll_tie())));
             dbg_row = column![
                 rule::horizontal(2),
-                row![total_winner, points_winner, popular_winner, running].spacing(SPACING)
+                row![total_winner, points_winner, popular_winner, running, tie].spacing(SPACING)
             ];
         }
 
@@ -286,36 +289,107 @@ impl App {
 
 fn get_state_view(state: &PollState, run: &PollRun) -> Element<'static, Message, Theme, Renderer> {
     if let PollRun::Live(d) = run {
-        let (winner, popular_winner, point_winner) = get_winners(&d);
+        let (winners, popular_winners, point_winners) = get_winners(d);
         let active = d.status == PollPhase::Active;
         let main_label = if active {
-            "Voting active, current leader: "
+            format!(
+                "Voting active, current {}: ",
+                winner_noun(active, winners.len())
+            )
         } else {
-            "Voting ended, winner: "
+            format!("Voting ended, {}: ", winner_noun(active, winners.len()))
         };
         let popular_label = format!(
             "Popular vote {}: ",
-            if active { "leader" } else { "winner" }
+            winner_noun(active, popular_winners.len())
         );
-        let point_label = format!("Point vote {}: ", if active { "leader" } else { "winner" });
-        let mut col = column![row![Text::new(main_label), bold_text(winner.title.clone())],];
-        if winner.id != popular_winner.id {
+        let non_tied_label = "Non tied winner: ";
+        let point_label = format!("Point vote {}: ", winner_noun(active, point_winners.len()));
+        let mut col = column![row![Text::new(main_label), bold_text(titles(&winners))],];
+        if !same_set(&winners, &popular_winners) {
             col = col.push(row![
                 Text::new(popular_label),
-                bold_text(popular_winner.title.clone())
+                bold_text(titles(&popular_winners))
             ])
         }
-        if winner.id != point_winner.id {
+        if !same_set(&winners, &point_winners) {
             col = col.push(row![
                 Text::new(point_label),
-                bold_text(point_winner.title.clone())
+                bold_text(titles(&point_winners))
             ])
         }
+        if let Some(non_tied_winner) = get_non_tied_winner(d) {
+            if !winners.iter().any(|w| w.id == non_tied_winner.id) {
+                col = col.push(row![
+                    Text::new(non_tied_label),
+                    bold_text(non_tied_winner.title.clone())
+                ])
+            }
+        };
         col = col.push(get_votes_result(&Some(d), state.channel_point_cost));
         col.spacing(SPACING).into()
     } else {
         crate::widgets::empty_panel("📊", "No poll running yet")
     }
+}
+
+fn titles(choices: &[PollChoiceState]) -> String {
+    choices
+        .iter()
+        .map(|c| c.title.clone())
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+fn winner_noun(active: bool, count: usize) -> String {
+    let mut noun = if active {
+        "leader".to_string()
+    } else {
+        "winner".to_string()
+    };
+    if count > 1 {
+        noun.push('s')
+    }
+    noun
+}
+
+fn same_set(a: &[PollChoiceState], b: &[PollChoiceState]) -> bool {
+    a.len() == b.len() && {
+        let ids: std::collections::HashSet<&str> = a.iter().map(|c| c.id.as_str()).collect();
+        b.iter().all(|c| ids.contains(c.id.as_str()))
+    }
+}
+
+fn winners_by(
+    choices: &[PollChoiceState],
+    key: impl Fn(&PollChoiceState) -> i32,
+) -> Vec<PollChoiceState> {
+    match choices.iter().map(&key).max() {
+        Some(max) => choices.iter().filter(|c| key(c) == max).cloned().collect(),
+        None => Vec::new(),
+    }
+}
+
+fn get_winners(
+    state: &PollStateData,
+) -> (
+    Vec<PollChoiceState>,
+    Vec<PollChoiceState>,
+    Vec<PollChoiceState>,
+) {
+    (
+        winners_by(&state.choices, |c| c.votes),
+        winners_by(&state.choices, |c| c.popular_votes()),
+        winners_by(&state.choices, |c| c.channel_points_votes),
+    )
+}
+
+fn get_non_tied_winner(state: &PollStateData) -> Option<&PollChoiceState> {
+    state
+        .choices
+        .iter()
+        .filter(|&c| state.choices.iter().filter(|x| x.votes == c.votes).count() == 1)
+        .max_by_key(|&c| c.votes)
 }
 
 fn get_votes_result(
@@ -389,30 +463,6 @@ fn get_votes_result(
     )
     .into()
 }
-
-fn get_winners(state: &PollStateData) -> (PollChoiceState, PollChoiceState, PollChoiceState) {
-    let winner = state
-        .choices
-        .iter()
-        .max_by_key(|c| c.votes)
-        .expect("No empty choices")
-        .clone();
-    let popular_winner = state
-        .choices
-        .iter()
-        .max_by_key(|c| c.popular_votes())
-        .expect("No empty choices")
-        .clone();
-    let point_winner = state
-        .choices
-        .iter()
-        .max_by_key(|c| c.channel_points_votes)
-        .expect("No empty choices")
-        .clone();
-
-    (winner, popular_winner, point_winner)
-}
-
 #[derive(Debug, Clone)]
 pub enum PollMessage {
     TitleChanged(String),

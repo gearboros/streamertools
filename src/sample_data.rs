@@ -69,6 +69,15 @@ pub fn poll_popular_winner() -> PollStateData {
     ])
 }
 
+pub fn poll_tie() -> PollStateData {
+    poll(vec![
+        choice("1", "Team Cats", 100, 30),
+        choice("2", "Team Dogs", 100, 20),
+        choice("3", "Team Rats", 40, 10),
+        choice("4", "Team Spiders", 4, 2),
+    ])
+}
+
 fn outcome(
     id: &str,
     title: &str,
