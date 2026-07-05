@@ -19,19 +19,19 @@ use directories::ProjectDirs;
 use iced::alignment::Vertical;
 use iced::widget::operation::{focus_next, focus_previous};
 use iced::widget::space::horizontal;
-use iced::widget::{Container, Text, button, column, container, row, text};
-use iced::{Element, Renderer, Subscription, Task, Theme, keyboard, time};
+use iced::widget::{button, column, container, row, text, Container, Text};
+use iced::{keyboard, time, Element, Renderer, Subscription, Task, Theme};
 use iced_aw::{TabBar, TabLabel};
 use poll::PollMessage;
 use prediction::PredictionMessage;
-use serde::Serialize;
 use serde::de::DeserializeOwned;
+use serde::Serialize;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 use tracing::{error, info, warn};
 use tracing_appender::rolling::Rotation;
-use tracing_subscriber::{EnvFilter, fmt, prelude::*};
+use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 use twitch_api::*;
 
 pub const CLIENT_ID: &str = "9w729lqufngx4sztgex20eztz7o879";
@@ -330,14 +330,18 @@ fn subscription(app: &App) -> Subscription<Message> {
     let mut subs = vec![keyboard::listen().map(Message::Keyboard)];
 
     if let PollRun::Live(d) = &app.poll.run
-        && d.status == PollPhase::Active && !app.sample {
-            subs.push(time::every(Duration::from_secs(2)).map(|_| Message::PollTick))
-        }
+        && d.status == PollPhase::Active
+        && !app.sample
+    {
+        subs.push(time::every(Duration::from_secs(2)).map(|_| Message::PollTick))
+    }
 
     if let PredictionRun::Live(d) = &app.prediction.run
-        && d.status == PredictionStatus::Active && !app.sample {
-            subs.push(time::every(Duration::from_secs(2)).map(|_| Message::PredictionTick))
-        }
+        && d.status == PredictionStatus::Active
+        && !app.sample
+    {
+        subs.push(time::every(Duration::from_secs(2)).map(|_| Message::PredictionTick))
+    }
 
     Subscription::batch(subs)
 }
@@ -411,10 +415,20 @@ impl App {
             ..PredictionTab::default()
         };
 
+        let client = reqwest::Client::builder()
+            .connect_timeout(Duration::from_secs(15))
+            .timeout(Duration::from_secs(30))
+            .build()
+            .unwrap_or_else(|e| {
+                warn!("Could not build HTTP client with timeouts: {e}");
+                reqwest::Client::default()
+            });
+
         let config_path = path.to_path_buf();
         if let Some((access, refresh)) = load_tokens(&config_path) {
             info!("Loaded tokens, validating...");
             let app = Self {
+                client,
                 access_token: Some(access.clone()),
                 refresh_token: Some(refresh.clone()),
                 auth_status: "Checking saved token...".to_string(),
@@ -430,6 +444,7 @@ impl App {
         info!("No tokens found in keyring or file.");
         (
             Self {
+                client,
                 auth_status: "Not logged in".to_string(),
                 poll,
                 prediction,
