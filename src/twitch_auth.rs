@@ -37,10 +37,7 @@ pub async fn request_device_code(client: &reqwest::Client) -> Result<DeviceCodeR
         .post("https://id.twitch.tv/oauth2/device")
         .form(&[
             ("client_id", CLIENT_ID),
-            (
-                "scopes",
-                "user:read:email channel:manage:polls channel:manage:predictions",
-            ),
+            ("scopes", "channel:manage:polls channel:manage:predictions"),
         ])
         .send()
         .await
@@ -142,7 +139,7 @@ pub async fn refresh_access_token(
     Ok((tokens.access_token, tokens.refresh_token))
 }
 
-/// Saves the tokens to an OS provided keyring, falls back to a storage file if that fails.
+/// Saves the tokens to an OS provided keyring, returns Error for user to confirm saving to file otherwise
 pub fn save_tokens(access: &str, refresh: &str) -> Result<(), String> {
     info!("Saving tokens...");
 
@@ -166,6 +163,11 @@ fn save_tokens_to_keyring(access: &str, refresh: &str) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
+///
+/// Save tokens to keyfile if keyring is unavailable and user confirmed saving to file.
+/// Realistically this should only happen on minimalist Linux systems.
+/// Use 0600 access where possible.
+///
 pub fn save_tokens_to_file(access: &str, refresh: &str, path: &Path) -> Result<(), String> {
     let tokens = StoredTokens {
         access_token: access.to_string(),

@@ -1,14 +1,15 @@
-use crate::config::ConfigList;
+use crate::config::{load_config, save_config, ConfigList};
 use crate::poll::PollMessage::DurationChange;
 use crate::sample_data::{
     poll_points_winner, poll_popular_winner, poll_tie, poll_total_winner, running_poll,
 };
 use crate::style::{bold_text, thousand_separator};
-use crate::twitch_api::{
-    create_poll, end_poll, CreatePollRequest, PollChoice, PollChoiceState, PollPhase, PollStateData,
+use crate::twitch_api::{create_poll, end_poll};
+use crate::twitch_types::{
+    CreatePollRequest, PollChoice, PollChoiceState, PollPhase, PollStateData,
 };
 use crate::widgets::{config_bar, duration_row, option_editor};
-use crate::{load_config, save_config, App, Message, BIG_SPACING, SPACING};
+use crate::{App, Message, BIG_SPACING, SPACING};
 use iced::widget::{
     button, checkbox, column, container, row, rule, text, text_input, Checkbox, Column, Text,
 };
@@ -64,6 +65,7 @@ impl App {
                         .iter()
                         .map(|o| PollChoice { title: o.clone() })
                         .collect(),
+                    // minutes -> seconds for API
                     duration: self.poll.form.duration * 60,
                     channel_points_voting_enabled: self.poll.form.uses_channel_points,
                     channel_points_per_vote: self.poll.form.channel_point_cost,
@@ -234,6 +236,7 @@ impl App {
 
         let mut dbg_row = column![];
         if self.sample {
+            // only shown with --sample, buttons to show sample results for testing
             let total_winner = button("Total Winner")
                 .style(crate::style::dbg_button)
                 .on_press(Message::Poll(PollMessage::LoadSampleData(
@@ -319,12 +322,13 @@ fn get_state_view(state: &PollState, run: &PollRun) -> Element<'static, Message,
             ])
         }
         if let Some(non_tied_winner) = get_non_tied_winner(d)
-            && !winners.iter().any(|w| w.id == non_tied_winner.id) {
-                col = col.push(row![
-                    Text::new(non_tied_label),
-                    bold_text(non_tied_winner.title.clone())
-                ])
-            };
+            && !winners.iter().any(|w| w.id == non_tied_winner.id)
+        {
+            col = col.push(row![
+                Text::new(non_tied_label),
+                bold_text(non_tied_winner.title.clone())
+            ])
+        };
         col = col.push(get_votes_result(&Some(d), state.channel_point_cost));
         col.spacing(SPACING).into()
     } else {
@@ -352,6 +356,8 @@ fn winner_noun(active: bool, count: usize) -> String {
     noun
 }
 
+// Compares two winner sets by choice id. Used so the results view only shows the separate
+// popular-vote / point-vote winner rows when they differ from the overall winner set.
 fn same_set(a: &[PollChoiceState], b: &[PollChoiceState]) -> bool {
     a.len() == b.len() && {
         let ids: std::collections::HashSet<&str> = a.iter().map(|c| c.id.as_str()).collect();
@@ -383,6 +389,8 @@ fn get_winners(
     )
 }
 
+// Intended to surface a single decisive winner when the overall vote is a tie.
+// which during a top tie is a lower-placed option (e.g. third place)
 fn get_non_tied_winner(state: &PollStateData) -> Option<&PollChoiceState> {
     state
         .choices

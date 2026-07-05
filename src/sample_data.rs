@@ -1,8 +1,8 @@
-//! Only used if --debug is active for
-//! Test date for debug buttons
+//! Only used if --sample is active for
+//! Test data for debug buttons
 #![allow(dead_code)]
 
-use crate::twitch_api::{
+use crate::twitch_types::{
     CreatePredictionResponseData, PollChoiceState, PollPhase, PollStateData, PredictionOutcome,
     PredictionStatus, Predictor,
 };
@@ -86,15 +86,17 @@ fn outcome(
     color: &str,
     factor: i32,
 ) -> PredictionOutcome {
+    // make sure to have one winner display and the rest losers.
+    let won = if id == "1" { 1 } else { 0 };
     PredictionOutcome {
         id: id.to_string(),
         title: title.to_string(),
         users,
         channel_points,
         top_predictors: Some(vec![
-            predictor("Alice", 12_000 * factor, 18_000 * factor),
-            predictor("Bob", 8_500 * factor, 12_750 * factor),
-            predictor("Carol", 3_000 * factor, 4_500 * factor),
+            predictor("Alice", 12_000 * factor, 18_000 * factor * won),
+            predictor("Bob", 8_500 * factor, 12_750 * factor * won),
+            predictor("Carol", 3_000 * factor, 4_500 * factor * won),
         ]),
         color: color.to_string(),
     }

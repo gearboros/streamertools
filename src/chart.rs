@@ -10,13 +10,16 @@ use iced::{Color, Point, Rectangle, Renderer, Size, Theme};
 pub struct BarData {
     pub title: String,
     pub value: i32,
-    pub colour: Color,
+    pub color: Color,
 }
 
 pub struct BarChart {
     pub data: Vec<BarData>,
 }
 
+///
+/// Using canvas to draw a bar chat
+///
 impl canvas::Program<Message> for BarChart {
     type State = ();
 
@@ -30,13 +33,16 @@ impl canvas::Program<Message> for BarChart {
     ) -> Vec<Geometry<Renderer>> {
         let mut frame = canvas::Frame::new(renderer, bounds.size());
 
+        // .max(1) to avoid dividing by zero
         let max = self.data.iter().map(|d| d.value).fold(0, i32::max).max(1);
         let bar_space = frame.width() / self.data.len() as f32;
+
         let bar_width = bar_space * 0.75;
         let gap = (bar_space - bar_width) / 2.0;
 
         let top_pad = 50.0;
         let bottom_pad = 25.0;
+        // .max(1) to always be positive
         let plot_h = (frame.height() - top_pad - bottom_pad).max(1.0);
         let baseline = top_pad + plot_h;
 
@@ -47,7 +53,9 @@ impl canvas::Program<Message> for BarChart {
             let x_center = x + bar_width / 2.0;
 
             let bar = canvas::Path::rectangle(Point::new(x, y), Size::new(bar_width, h));
-            frame.fill(&bar, d.colour);
+            // use color from Twitch response
+            // FIXME (?) use for Poll? No colors?
+            frame.fill(&bar, d.color);
 
             frame.fill_text(canvas::Text {
                 content: thousand_separator(d.value),

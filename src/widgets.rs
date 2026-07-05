@@ -84,6 +84,8 @@ pub fn config_bar(
     }
     let new_btn: Button<_> = button("New").on_press(on_new).style(style::neutral_button);
 
+    // Overwrite guard: block Save when a config of this name already exists, unless it was
+    // explicitly loaded first (so editing-then-saving a loaded config is still allowed).
     let can_save = configs.loaded || !configs.items.iter().any(|i| i == name);
 
     let save_btn = button("Save").style(style::neutral_button);

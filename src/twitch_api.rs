@@ -1,52 +1,24 @@
+use crate::twitch_types::*;
 use crate::CLIENT_ID;
 use reqwest::{RequestBuilder, Response};
 use serde::{Deserialize, Serialize};
 use tracing::error;
 
-#[derive(Deserialize, Debug, Default, Clone, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "UPPERCASE")]
-pub enum PredictionStatus {
-    Resolved,
-    #[default]
-    Active,
-    Locked,
-    Canceled,
+macro_rules! create_helix_url {
+    ($path:literal) => {
+        concat!("https://api.twitch.tv/helix/", $path)
+    };
 }
 
-impl PredictionStatus {
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            PredictionStatus::Resolved => "RESOLVED",
-            PredictionStatus::Active => "ACTIVE",
-            PredictionStatus::Locked => "LOCKED",
-            PredictionStatus::Canceled => "CANCELED",
-        }
-    }
-}
-
-#[derive(Serialize, Debug)]
-pub struct CreatePollRequest {
-    pub broadcaster_id: String,
-    pub title: String,
-    pub choices: Vec<PollChoice>,
-    pub duration: usize,
-    pub channel_points_voting_enabled: bool,
-    pub channel_points_per_vote: usize,
-}
-
-#[derive(Serialize, Debug)]
-pub struct PollChoice {
-    pub title: String,
-}
+const POLL_URL: &str = create_helix_url!("polls");
+const PREDICTION_URL: &str = create_helix_url!("predictions");
 
 pub async fn create_poll(
     client: &reqwest::Client,
     access_token: &str,
     request: CreatePollRequest,
 ) -> Result<PollStateData, String> {
-    let builder = client
-        .post("https://api.twitch.tv/helix/polls")
-        .json(&request);
+    let builder = client.post(POLL_URL).json(&request);
     let resp = add_headers_and_send(access_token, builder).await?;
 
     if !resp.status().is_success() {
@@ -77,10 +49,7 @@ pub async fn end_poll(
     poll_id: &str,
     access_token: &str,
 ) -> Result<PollStateData, String> {
-    let uri = format!(
-        "https://api.twitch.tv/helix/polls?broadcaster_id={}&id={}&status=TERMINATED",
-        broadcaster_id, poll_id
-    );
+    let uri = format!("{POLL_URL}?broadcaster_id={broadcaster_id}&id={poll_id}&status=TERMINATED");
     let builder = client.patch(uri);
     let resp = add_headers_and_send(access_token, builder).await?;
 
@@ -93,52 +62,12 @@ pub async fn end_poll(
     extract_poll_response(resp).await
 }
 
-#[derive(Serialize, Debug)]
-pub struct CreatePredictionRequest {
-    pub broadcaster_id: String,
-    pub title: String,
-    pub outcomes: Vec<PollChoice>,
-    pub prediction_window: usize,
-}
-
-#[derive(Deserialize, Serialize, Debug, Clone, Default, Eq, PartialEq)]
-pub struct Predictor {
-    pub user_name: String,
-    pub channel_points_used: i32,
-    pub channel_points_won: i32,
-}
-
-#[derive(Deserialize, Serialize, Debug, Clone, Default, Eq, PartialEq)]
-pub struct PredictionOutcome {
-    pub id: String,
-    pub title: String,
-    pub users: i32,
-    pub channel_points: i32,
-    pub top_predictors: Option<Vec<Predictor>>,
-    pub color: String,
-}
-
-#[derive(Deserialize, Serialize, Debug, Clone, Default, PartialEq, Eq)]
-pub struct CreatePredictionResponseData {
-    pub id: String,
-    pub winning_outcome_id: Option<String>,
-    pub outcomes: Vec<PredictionOutcome>,
-    pub status: PredictionStatus,
-}
-
-#[derive(Deserialize, Debug)]
-pub struct CreatePredictionResponse {
-    data: Vec<CreatePredictionResponseData>,
-}
-
 pub async fn create_prediction(
     client: &reqwest::Client,
     access_token: &str,
     request: CreatePredictionRequest,
 ) -> Result<CreatePredictionResponseData, String> {
-    let builder = client
-        .post("https://api.twitch.tv/helix/predictions")
-        .json(&request);
+    let builder = client.post(PREDICTION_URL).json(&request);
     let resp = add_headers_and_send(access_token, builder).await?;
 
     if !resp.status().is_success() {
@@ -163,13 +92,6 @@ async fn extract_prediction_response(
         .into_iter()
         .next()
         .ok_or_else(|| "Empty response from Twitch".to_string())
-}
-
-#[derive(Serialize, Debug)]
-pub struct EndPredictionRequest {
-    pub broadcaster_id: String,
-    pub outcome_id: String,
-    pub prediction_id: String,
 }
 
 pub async fn end_prediction(
@@ -203,11 +125,13 @@ async fn set_prediction_state(
     status: PredictionStatus,
 ) -> Result<CreatePredictionResponseData, String> {
     let mut uri = format!(
-        "https://api.twitch.tv/helix/predictions?broadcaster_id={}&id={}&status={}",
+        "{PREDICTION_URL}?broadcaster_id={}&id={}&status={}",
         request.broadcaster_id,
         request.prediction_id,
         status.as_str(),
     );
+    // Only resolving a prediction supplies a winner; lock/cancel deliberately pass an
+    // empty `outcome_id`, so we omit `winning_outcome_id` in those cases.
     if !request.outcome_id.is_empty() {
         uri = format!("{}&winning_outcome_id={}", uri, request.outcome_id);
     }
@@ -229,10 +153,7 @@ pub async fn check_prediction(
     prediction_id: &str,
     access_token: &str,
 ) -> Result<CreatePredictionResponseData, String> {
-    let uri = format!(
-        "https://api.twitch.tv/helix/predictions?broadcaster_id={}&id={}",
-        broadcaster_id, prediction_id
-    );
+    let uri = format!("{PREDICTION_URL}?broadcaster_id={broadcaster_id}&id={prediction_id}");
     let builder = client.get(uri);
     let resp = add_headers_and_send(access_token, builder).await?;
 
@@ -245,52 +166,13 @@ pub async fn check_prediction(
     extract_prediction_response(resp).await
 }
 
-#[derive(Deserialize, Default, Serialize, Debug, Clone, Eq, PartialEq)]
-pub struct PollChoiceState {
-    pub id: String,
-    pub title: String,
-    pub votes: i32,
-    pub channel_points_votes: i32,
-}
-
-impl PollChoiceState {
-    pub fn popular_votes(&self) -> i32 {
-        self.votes - self.channel_points_votes
-    }
-}
-
-#[derive(Deserialize, Serialize, Default, Debug, Clone, Eq, PartialEq)]
-#[serde(rename_all = "UPPERCASE")]
-pub enum PollPhase {
-    #[default]
-    Active,
-    Terminated,
-    Archived,
-    Completed,
-}
-
-#[derive(Deserialize, Serialize, Default, Debug, Clone, Eq, PartialEq)]
-pub struct PollStateData {
-    pub id: String,
-    pub choices: Vec<PollChoiceState>,
-    pub status: PollPhase,
-}
-
-#[derive(Deserialize, Debug)]
-pub struct PollStateResponse {
-    data: Vec<PollStateData>,
-}
-
 pub async fn check_poll(
     client: &reqwest::Client,
     broadcaster_id: &str,
     poll_id: &str,
     access_token: &str,
 ) -> Result<PollStateData, String> {
-    let uri = format!(
-        "https://api.twitch.tv/helix/polls?broadcaster_id={}&id={}",
-        broadcaster_id, poll_id
-    );
+    let uri = format!("{POLL_URL}?broadcaster_id={broadcaster_id}&id={poll_id}");
     let builder = client.get(uri);
     let resp = add_headers_and_send(access_token, builder).await?;
 

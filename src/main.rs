@@ -7,6 +7,7 @@ mod sample_data;
 mod style;
 mod twitch_api;
 mod twitch_auth;
+mod twitch_types;
 mod widgets;
 
 use crate::config::ConfigList;
@@ -14,7 +15,7 @@ use crate::poll::{PollRun, PollState, PollTab};
 use crate::prediction::{PredictionRun, PredictionState, PredictionTab};
 use crate::style::{twitch_button, twitch_tab};
 use crate::twitch_auth::*;
-use auth::AuthMessage;
+use auth::{AuthMessage, DeviceCodeInfo};
 use directories::ProjectDirs;
 use iced::alignment::Vertical;
 use iced::widget::operation::{focus_next, focus_previous};
@@ -33,6 +34,7 @@ use tracing::{error, info, warn};
 use tracing_appender::rolling::Rotation;
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 use twitch_api::*;
+use twitch_types::{CreatePredictionResponseData, PollPhase, PollStateData, PredictionStatus};
 
 pub const CLIENT_ID: &str = "9w729lqufngx4sztgex20eztz7o879";
 
@@ -84,15 +86,6 @@ struct App {
 }
 
 #[derive(Debug, Clone)]
-struct DeviceCodeInfo {
-    verification_uri: String,
-    user_code: String,
-    device_code: String,
-    interval: u64,
-    expires_in: u64,
-}
-
-#[derive(Debug, Clone)]
 enum Message {
     Auth(AuthMessage),
     TabSelected(usize),
@@ -121,6 +114,8 @@ impl App {
             Message::Prediction(pred_message) => self.handle_pred(pred_message),
             Message::Poll(poll_message) => self.handle_poll(poll_message),
             Message::Error(err) => {
+                // this is used to surface errors anywhere in the application
+                // if self.err exists -> show modal, if modal is closed -> reset.
                 self.err = err;
                 Task::none()
             }
@@ -195,6 +190,7 @@ impl App {
                     modifiers,
                     ..
                 } => {
+                    // basic tab navigation
                     if modifiers.shift() {
                         focus_previous()
                     } else {
@@ -207,6 +203,7 @@ impl App {
                     ..
                 } => {
                     if modifiers.control() {
+                        // ctrl + number tab bar navigation
                         let tab = match c.as_str() {
                             "1" => Some(TabId::Prediction),
                             "2" => Some(TabId::Poll),
@@ -326,6 +323,11 @@ impl App {
     }
 }
 
+///
+/// Two subscriptions:
+/// * Polling every two seconds poll current state of prediction/poll if active
+/// * Keyboard: React to keyboard events
+///
 fn subscription(app: &App) -> Subscription<Message> {
     let mut subs = vec![keyboard::listen().map(Message::Keyboard)];
 
@@ -358,6 +360,7 @@ fn main() -> iced::Result {
         .expect("Could not create predictions directory");
     fs::create_dir_all(config_path.join("logs")).expect("Could not create log dir.");
 
+    // daily rotating log including max. number of kept logs
     let file_appender = tracing_appender::rolling::Builder::new()
         .rotation(Rotation::DAILY)
         .filename_prefix("streamertools")
@@ -415,6 +418,7 @@ impl App {
             ..PredictionTab::default()
         };
 
+        // shared client with basic timeout values
         let client = reqwest::Client::builder()
             .connect_timeout(Duration::from_secs(15))
             .timeout(Duration::from_secs(30))
@@ -424,6 +428,7 @@ impl App {
                 reqwest::Client::default()
             });
 
+        // Trying to reuse auth tokens from keyring/file
         let config_path = path.to_path_buf();
         if let Some((access, refresh)) = load_tokens(&config_path) {
             info!("Loaded tokens, validating...");
@@ -490,21 +495,4 @@ impl App {
         warn!(err);
         Task::done(Message::Error(err))
     }
-}
-
-fn save_config<T: Serialize>(
-    root: &Path,
-    subdir: &str,
-    name: &str,
-    state: &T,
-) -> Result<(), String> {
-    let json = serde_json::to_string(state).map_err(|e| e.to_string())?;
-    fs::write(root.join(subdir).join(format!("{name}.json")), json).map_err(|e| e.to_string())?;
-    Ok(())
-}
-
-fn load_config<T: DeserializeOwned>(root: &Path, subdir: &str, name: &str) -> Option<T> {
-    fs::read_to_string(root.join(subdir).join(format!("{name}.json")))
-        .ok()
-        .and_then(|t| serde_json::from_str(&t).ok())
 }

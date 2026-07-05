@@ -2,7 +2,7 @@ use crate::twitch_auth::{
     poll_for_tokens, refresh_access_token, request_device_code, save_tokens, save_tokens_to_file,
     validate_token,
 };
-use crate::{App, DeviceCodeInfo, Message};
+use crate::{App, Message};
 use iced::Task;
 use tracing::info;
 
@@ -151,7 +151,7 @@ impl App {
             }
             ConfirmFallback => {
                 self.confirm = Some(String::from(
-                    "Could not save tokens to the Operating System's keystore.\nDo you want the tokens saved to a file?\nIf \"No\", you'll have to re-authenticate every time you restart the app.",
+                    "Could not save tokens to the Operating System's keystore.\nDo you want the tokens saved to a file? This is not recommended since it might leak the tokens to other processes.\nIf \"No\", you'll have to re-authenticate every time you restart the app.",
                 ));
                 Task::none()
             }
@@ -168,4 +168,13 @@ impl App {
             }
         }
     }
+}
+
+#[derive(Debug, Clone)]
+pub struct DeviceCodeInfo {
+    pub verification_uri: String,
+    pub user_code: String,
+    device_code: String,
+    interval: u64,
+    expires_in: u64,
 }

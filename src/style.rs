@@ -106,6 +106,7 @@ pub fn bold_text<'a>(text: String) -> Text<'a> {
     })
 }
 
+/// Groups digits with `.` (European style: `1.000.000`), not the comma English readers expect.
 pub fn thousand_separator(number: i32) -> String {
     let s = number.to_string();
     let (sign, digits) = match s.strip_prefix('-') {
