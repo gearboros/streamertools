@@ -268,8 +268,8 @@ impl App {
         }
     }
 
-    pub fn get_prediction_tab_content(&self) -> Element<'static, Message, Theme, Renderer> {
-        let state = self.prediction.form.clone();
+    pub fn get_prediction_tab_content(&self) -> Element<'_, Message, Theme, Renderer> {
+        let state = &self.prediction.form;
         let editable = self.prediction.run == PredictionRun::Idle;
         let phase = if let PredictionRun::Live(d) = &self.prediction.run {
             Some(d.status.clone())
@@ -300,11 +300,11 @@ impl App {
         } else {
             // list of options with win buttons
             let options = if let PredictionRun::Live(d) = &self.prediction.run {
-                d.outcomes.clone()
+                &d.outcomes
             } else {
-                vec![]
+                &vec![]
             };
-            for option in options.clone().iter() {
+            for option in options.iter() {
                 let text = Text::new(option.title.clone()).width(Length::Fill);
                 let mut win_btn = button("Winner!");
                 if phase == Some(PredictionStatus::Locked) {

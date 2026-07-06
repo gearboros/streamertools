@@ -312,7 +312,7 @@ impl App {
         }
     }
 
-    fn get_tab_content(&self) -> Element<'static, Message, Theme, Renderer> {
+    fn get_tab_content(&self) -> Element<'_, Message, Theme, Renderer> {
         match &self.active_tab {
             TabId::Prediction => self.get_prediction_tab_content(),
             TabId::Poll => self.get_poll_tab_content(),

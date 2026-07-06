@@ -208,8 +208,8 @@ impl App {
         }
     }
 
-    pub fn get_poll_tab_content(&self) -> Element<'static, Message, Theme, Renderer> {
-        let state = self.poll.form.clone();
+    pub fn get_poll_tab_content(&self) -> Element<'_, Message, Theme, Renderer> {
+        let state = &self.poll.form;
         let editable = self.poll.run == PollRun::Idle;
         let phase = if let PollRun::Live(d) = &self.poll.run {
             Some(d.status.clone())
@@ -300,7 +300,7 @@ impl App {
             ];
         }
 
-        let status_display = get_state_view(&state, &self.poll.run, self.poll.active_tab);
+        let status_display = get_state_view(state, &self.poll.run, self.poll.active_tab);
 
         let form = column![
             save_row,
