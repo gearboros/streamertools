@@ -25,8 +25,6 @@ use iced::{keyboard, time, Element, Renderer, Subscription, Task, Theme};
 use iced_aw::{TabBar, TabLabel};
 use poll::PollMessage;
 use prediction::PredictionMessage;
-use serde::de::DeserializeOwned;
-use serde::Serialize;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::Duration;

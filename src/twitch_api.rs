@@ -1,7 +1,6 @@
 use crate::twitch_types::*;
 use crate::CLIENT_ID;
 use reqwest::{RequestBuilder, Response};
-use serde::{Deserialize, Serialize};
 use tracing::error;
 
 macro_rules! create_helix_url {

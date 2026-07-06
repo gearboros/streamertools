@@ -1,27 +1,58 @@
+use crate::chart::{BarChart, BarData};
 use crate::config::{load_config, save_config, ConfigList};
 use crate::poll::PollMessage::DurationChange;
 use crate::sample_data::{
     poll_points_winner, poll_popular_winner, poll_tie, poll_total_winner, running_poll,
 };
-use crate::style::{bold_text, thousand_separator};
+use crate::style::{bold_text, poll_colors, thousand_separator};
 use crate::twitch_api::{create_poll, end_poll};
 use crate::twitch_types::{
     CreatePollRequest, PollChoice, PollChoiceState, PollPhase, PollStateData,
 };
 use crate::widgets::{config_bar, duration_row, option_editor};
-use crate::{App, Message, BIG_SPACING, SPACING};
+use crate::{style, App, Message, BIG_SPACING, SPACING};
 use iced::widget::{
-    button, checkbox, column, container, row, rule, text, text_input, Checkbox, Column, Text,
+    button, canvas, checkbox, column, container, row, rule, text, text_input, Checkbox, Column, Row,
+    Text,
 };
-use iced::{Center, Element, Length, Renderer, Task, Theme};
+use iced::{Center, Color, Element, Length, Renderer, Task, Theme};
 use iced_aw::number_input;
+use iced_aw::style::colors::BLACK;
 use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum PollBarTabId {
+    #[default]
+    TOTAL,
+    POINTS,
+    USERS,
+}
+
+impl PollBarTabId {
+    pub fn idx(self) -> usize {
+        match self {
+            PollBarTabId::USERS => 2,
+            PollBarTabId::POINTS => 1,
+            PollBarTabId::TOTAL => 0,
+        }
+    }
+
+    pub fn from_idx(idx: usize) -> Self {
+        match idx {
+            0 => PollBarTabId::TOTAL,
+            1 => PollBarTabId::POINTS,
+            2 => PollBarTabId::USERS,
+            _ => PollBarTabId::TOTAL,
+        }
+    }
+}
 
 #[derive(Default, Debug)]
 pub struct PollTab {
     pub form: PollState,
     pub run: PollRun,
     pub configs: ConfigList,
+    pub active_tab: PollBarTabId,
 }
 
 #[derive(Default, Debug, Clone, Eq, PartialEq)]
@@ -160,6 +191,10 @@ impl App {
                 self.poll.run = PollRun::Live(data);
                 Task::none()
             }
+            TabSelected(idx) => {
+                self.poll.active_tab = idx;
+                Task::none()
+            }
         }
     }
 
@@ -237,26 +272,27 @@ impl App {
         let mut dbg_row = column![];
         if self.sample {
             // only shown with --sample, buttons to show sample results for testing
-            let total_winner = button("Total Winner")
-                .style(crate::style::dbg_button)
-                .on_press(Message::Poll(PollMessage::LoadSampleData(
-                    poll_total_winner(),
-                )));
+            let total_winner =
+                button("Total Winner")
+                    .style(style::dbg_button)
+                    .on_press(Message::Poll(PollMessage::LoadSampleData(
+                        poll_total_winner(),
+                    )));
             let points_winner = button("Winner wins points, loses popular")
-                .style(crate::style::dbg_button)
+                .style(style::dbg_button)
                 .on_press(Message::Poll(PollMessage::LoadSampleData(
                     poll_points_winner(),
                 )));
             let popular_winner = button("Winner wins popular, loses points")
-                .style(crate::style::dbg_button)
+                .style(style::dbg_button)
                 .on_press(Message::Poll(PollMessage::LoadSampleData(
                     poll_popular_winner(),
                 )));
             let running = button("Running")
-                .style(crate::style::dbg_button)
+                .style(style::dbg_button)
                 .on_press(Message::Poll(PollMessage::LoadSampleData(running_poll())));
             let tie = button("Two Winners (tie)")
-                .style(crate::style::dbg_button)
+                .style(style::dbg_button)
                 .on_press(Message::Poll(PollMessage::LoadSampleData(poll_tie())));
             dbg_row = column![
                 rule::horizontal(2),
@@ -264,7 +300,7 @@ impl App {
             ];
         }
 
-        let status_display = get_state_view(&state, &self.poll.run);
+        let status_display = get_state_view(&state, &self.poll.run, self.poll.active_tab);
 
         let form = column![
             save_row,
@@ -290,7 +326,11 @@ impl App {
     }
 }
 
-fn get_state_view(state: &PollState, run: &PollRun) -> Element<'static, Message, Theme, Renderer> {
+fn get_state_view(
+    state: &PollState,
+    run: &PollRun,
+    active_tab: PollBarTabId,
+) -> Element<'static, Message, Theme, Renderer> {
     if let PollRun::Live(d) = run {
         let (winners, popular_winners, point_winners) = get_winners(d);
         let active = d.status == PollPhase::Active;
@@ -330,10 +370,85 @@ fn get_state_view(state: &PollState, run: &PollRun) -> Element<'static, Message,
             ])
         };
         col = col.push(get_votes_result(&Some(d), state.channel_point_cost));
+
+        // I'd love to have a voter breakdown similar to the top predictor breakdown here
+        // but Twitch API is being weird and for some reason doesn't return top voters, but top predictors
+        // It's technically possible via private GraphQL Endpoint, but we'd need to get a browser token for that
+        // you can vote for it here https://twitch.uservoice.com/forums/310213-developers/suggestions/51471106-top-point-voters-as-part-of-poll-result
+        let tab_bar = get_tab_bar(active_tab);
+
+        let bar_chart = canvas(get_bar_chart(active_tab, d))
+            .width(Length::Fill)
+            .height(Length::Fill);
+
+        col = col.push(tab_bar);
+        col = col.push(bar_chart);
         col.spacing(SPACING).into()
     } else {
         crate::widgets::empty_panel("📊", "No poll running yet")
     }
+}
+
+fn get_bar_chart(active_tab: PollBarTabId, d: &PollStateData) -> BarChart {
+    let mut data: Vec<BarData> = d
+        .choices
+        .iter()
+        .map(|c| BarData {
+            color: get_choice_color(&d.choices, &c.id),
+            title: c.title.clone(),
+            value: {
+                if active_tab == PollBarTabId::POINTS {
+                    c.channel_points_votes
+                } else if active_tab == PollBarTabId::USERS {
+                    c.popular_votes()
+                } else {
+                    c.votes
+                }
+            },
+        })
+        .collect();
+    data.sort_by_key(|d| std::cmp::Reverse(d.value));
+    BarChart { data }
+}
+
+// get color by position of id in original choice array, so sorting can't break it.
+fn get_choice_color(choices: &[PollChoiceState], id: &str) -> Color {
+    let colors = poll_colors();
+    choices
+        .iter()
+        .position(|c| c.id == id)
+        .filter(|&i| i < colors.len())
+        .map_or(BLACK, |i| colors[i])
+}
+
+fn get_tab_bar(active_tab: PollBarTabId) -> Row<'static, Message> {
+    let colors = style::poll_tab_colors();
+    let tab_button = |label: &'static str, color: Color, idx: usize| {
+        button(text(label))
+            .style(move |_, status| style::color_button(color, status, active_tab.idx() == idx))
+            .padding(SPACING as u16)
+            .on_press(Message::Poll(PollMessage::TabSelected(
+                PollBarTabId::from_idx(idx),
+            )))
+    };
+
+    row![
+        tab_button(
+            "Total",
+            colors[PollBarTabId::TOTAL.idx()],
+            PollBarTabId::TOTAL.idx()
+        ),
+        tab_button(
+            "Points",
+            colors[PollBarTabId::POINTS.idx()],
+            PollBarTabId::POINTS.idx()
+        ),
+        tab_button(
+            "Users",
+            colors[PollBarTabId::USERS.idx()],
+            PollBarTabId::USERS.idx()
+        ),
+    ]
 }
 
 fn titles(choices: &[PollChoiceState]) -> String {
@@ -438,7 +553,14 @@ fn get_votes_result(
         } else {
             (o.channel_points_votes as f64) / (total_point_votes as f64) * 100.0
         };
-        title_col = title_col.push(text(format!("• {}", o.title)));
+        title_col = title_col.push(
+            row![
+                text("●").color(get_choice_color(&state.choices, &o.id)),
+                text(o.title.clone())
+            ]
+            .spacing(SPACING)
+            .align_y(Center),
+        );
         votes_col = votes_col.push(text(format!("{} votes, {:.2}%", o.votes, vote_percent)));
         user_col = user_col.push(text(format!(
             "{} votes, {:05.2}%",
@@ -488,4 +610,5 @@ pub enum PollMessage {
     NewConfig,
     NameChanged(String),
     LoadSampleData(PollStateData),
+    TabSelected(PollBarTabId),
 }

@@ -174,16 +174,38 @@ mod tests {
     }
 }
 
+pub fn poll_colors() -> [Color; 5] {
+    [
+        get_base_color("BLUE"),
+        get_base_color("PINK"),
+        Color::from_rgb8(0xed, 0xa1, 0x00),
+        Color::from_rgb8(0x00, 0x83, 0x00),
+        Color::from_rgb8(0x4a, 0x3a, 0xa7),
+    ]
+}
+
+pub fn poll_tab_colors() -> [Color; 3] {
+    [
+        TWITCH_PURPLE,
+        Color::from_rgb8(0xF5, 0xB3, 0x00),
+        Color::from_rgb8(0x00, 0xB5, 0xAD),
+    ]
+}
+
 pub fn prediction_button(color: &str, status: button::Status, is_active: bool) -> Style {
-    let base_colour = get_base_color(color);
-    let darker = slightly_darken(base_colour);
+    let base_color = get_base_color(color);
+    color_button(base_color, status, is_active)
+}
+
+pub fn color_button(base_color: Color, status: button::Status, is_active: bool) -> Style {
+    let darker = slightly_darken(base_color);
     let background = match status {
-        button::Status::Hovered => base_colour,
-        button::Status::Pressed => base_colour,
+        button::Status::Hovered => base_color,
+        button::Status::Pressed => base_color,
         button::Status::Disabled => Color::BLACK,
         button::Status::Active => {
             if is_active {
-                base_colour
+                base_color
             } else {
                 darker
             }

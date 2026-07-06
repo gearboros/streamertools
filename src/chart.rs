@@ -54,7 +54,6 @@ impl canvas::Program<Message> for BarChart {
 
             let bar = canvas::Path::rectangle(Point::new(x, y), Size::new(bar_width, h));
             // use color from Twitch response
-            // FIXME (?) use for Poll? No colors?
             frame.fill(&bar, d.color);
 
             frame.fill_text(canvas::Text {
