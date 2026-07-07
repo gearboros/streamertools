@@ -1,0 +1,50 @@
+{
+  "data": [
+    {
+      "id": "86efb61a-dae2-4b66-9e93-48c1836bf748",
+      "broadcaster_id": "123456",
+      "broadcaster_name": "smartysmartmaster",
+      "broadcaster_login": "smartysmartmaster",
+      "title": "Which time works best?",
+      "choices": [
+        {
+          "id": "7815e46b-d886-47fc-8962-0f6893e08b3d",
+          "title": "9AM",
+          "votes": 5,
+          "channel_points_votes": 2,
+          "bits_votes": 0
+        },
+        {
+          "id": "5b6f2aed-1463-4f82-a62e-6da88c8141f5",
+          "title": "10AM",
+          "votes": 3,
+          "channel_points_votes": 0,
+          "bits_votes": 0
+        },
+        {
+          "id": "bdd2de39-30f3-417d-893a-806c2b3e216c",
+          "title": "7PM",
+          "votes": 12,
+          "channel_points_votes": 5,
+          "bits_votes": 0
+        },
+        {
+          "id": "88ed6e6f-fb92-4425-968c-1560ca09588a",
+          "title": "8PM",
+          "votes": 8,
+          "channel_points_votes": 3,
+          "bits_votes": 0
+        }
+      ],
+      "bits_voting_enabled": false,
+      "bits_per_vote": 0,
+      "channel_points_voting_enabled": true,
+      "channel_points_per_vote": 20,
+      "status": "COMPLETED",
+      "duration": 300,
+      "started_at": "2022-06-22T17:43:36.272090996Z",
+      "ended_at": "2022-06-22T17:48:36.272090996Z"
+    }
+  ],
+  "pagination": {}
+}

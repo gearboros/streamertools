@@ -1,0 +1,59 @@
+{
+  "data": [
+    {
+      "id": "5921de75-e302-42d4-89a3-a858604da590",
+      "broadcaster_id": "123456",
+      "broadcaster_name": "smartysmartmaster",
+      "broadcaster_login": "smartysmartmaster",
+      "title": "Will I set a PB lap time?",
+      "winning_outcome_id": "852378b7-ff5c-4b4e-b54d-615459b35574",
+      "outcomes": [
+        {
+          "id": "db70c764-9b4b-4036-87da-154720a648d4",
+          "title": "Absolutely",
+          "users": 5,
+          "channel_points": 500,
+          "top_predictors": [
+            {
+              "user_id": "111111",
+              "user_login": "winner1",
+              "user_name": "WinnerOne",
+              "channel_points_used": 100,
+              "channel_points_won": 0
+            },
+            {
+              "user_id": "222222",
+              "user_login": "winner2",
+              "user_name": "WinnerTwo",
+              "channel_points_used": 200,
+              "channel_points_won": 0
+            }
+          ],
+          "color": "BLUE"
+        },
+        {
+          "id": "852378b7-ff5c-4b4e-b54d-615459b35574",
+          "title": "Not a chance",
+          "users": 3,
+          "channel_points": 300,
+          "top_predictors": [
+            {
+              "user_id": "333333",
+              "user_login": "loser1",
+              "user_name": "LoserOne",
+              "channel_points_used": 150,
+              "channel_points_won": 0
+            }
+          ],
+          "color": "PINK"
+        }
+      ],
+      "prediction_window": 300,
+      "status": "RESOLVED",
+      "created_at": "2022-06-27T16:22:15.478726636Z",
+      "ended_at": "2022-06-27T16:28:04.625329479Z",
+      "locked_at": "2022-06-27T16:26:05.029735601Z"
+    }
+  ],
+  "pagination": {}
+}

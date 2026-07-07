@@ -527,7 +527,7 @@ fn get_winner(current: &CreatePredictionResponseData) -> Result<&PredictionOutco
 
 /// Twitch API is a bit weird and says status RESOLVED before payouts are calculated
 /// so we need to actually check for payouts, because status information is useless
-fn payouts_pending(data: &CreatePredictionResponseData) -> bool {
+pub fn payouts_pending(data: &CreatePredictionResponseData) -> bool {
     if data.status != PredictionStatus::Resolved {
         return false;
     }
@@ -699,4 +699,89 @@ fn get_percentages(total_points: i64, total_users: i64, o: &PredictionOutcome) -
         (o.channel_points as f64) / (total_points as f64) * 100.0
     };
     (user_percent, point_percent)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::payouts_pending;
+    use crate::twitch_types::{
+        CreatePredictionResponseData, PredictionOutcome, PredictionStatus, Predictor,
+    };
+
+    fn predictor(won: i64) -> Predictor {
+        Predictor {
+            user_name: "someone".to_string(),
+            channel_points_used: 10,
+            channel_points_won: won,
+        }
+    }
+
+    fn outcome(id: &str, top_predictors: Option<Vec<Predictor>>) -> PredictionOutcome {
+        PredictionOutcome {
+            id: id.to_string(),
+            title: id.to_string(),
+            users: 1,
+            channel_points: 10,
+            top_predictors,
+            color: "BLUE".to_string(),
+        }
+    }
+
+    /// A resolved prediction whose winning outcome ("win") carries the given predictors.
+    fn resolved_with(winner_predictors: Option<Vec<Predictor>>) -> CreatePredictionResponseData {
+        CreatePredictionResponseData {
+            id: "pred".to_string(),
+            winning_outcome_id: Some("win".to_string()),
+            outcomes: vec![
+                outcome("win", winner_predictors),
+                outcome("lose", Some(vec![predictor(0)])),
+            ],
+            status: PredictionStatus::Resolved,
+        }
+    }
+
+    #[test]
+    fn not_resolved_is_never_pending() {
+        let mut data = resolved_with(Some(vec![predictor(0)]));
+        for status in [
+            PredictionStatus::Active,
+            PredictionStatus::Locked,
+            PredictionStatus::Canceled,
+        ] {
+            data.status = status;
+            assert!(!payouts_pending(&data));
+        }
+    }
+
+    #[test]
+    fn resolved_with_all_zero_winnings_is_pending() {
+        // Twitch reports RESOLVED before it distributes points, so every winner reads 0.
+        let data = resolved_with(Some(vec![predictor(0), predictor(0)]));
+        assert!(payouts_pending(&data));
+    }
+
+    #[test]
+    fn resolved_with_any_payout_is_settled() {
+        let data = resolved_with(Some(vec![predictor(0), predictor(40)]));
+        assert!(!payouts_pending(&data));
+    }
+
+    #[test]
+    fn resolved_with_no_predictors_on_winner_is_not_pending() {
+        // Nobody predicted the winning outcome, so there is nothing to settle.
+        assert!(!payouts_pending(&resolved_with(None)));
+        assert!(!payouts_pending(&resolved_with(Some(vec![]))));
+    }
+
+    #[test]
+    fn resolved_without_resolvable_winner_is_not_pending() {
+        // Missing winning_outcome_id, or one that isn't among the outcomes.
+        let mut missing = resolved_with(Some(vec![predictor(0)]));
+        missing.winning_outcome_id = None;
+        assert!(!payouts_pending(&missing));
+
+        let mut unknown = resolved_with(Some(vec![predictor(0)]));
+        unknown.winning_outcome_id = Some("ghost".to_string());
+        assert!(!payouts_pending(&unknown));
+    }
 }

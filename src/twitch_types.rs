@@ -1,3 +1,5 @@
+mod test;
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize, Debug, Default, Clone, Eq, PartialEq, Serialize)]

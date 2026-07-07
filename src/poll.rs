@@ -606,3 +606,83 @@ pub enum PollMessage {
     LoadSampleData(PollStateData),
     TabSelected(PollBarTabId),
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn poll_choice_state(title: String, votes: i64, channel_points_votes: i64) -> PollChoiceState {
+        PollChoiceState {
+            title,
+            votes,
+            channel_points_votes,
+            ..PollChoiceState::default()
+        }
+    }
+    #[test]
+    fn test_winners_by() {
+        let choices = [
+            poll_choice_state("Loser".to_string(), 1, 1),
+            poll_choice_state("Winner".to_string(), 10, 8),
+            poll_choice_state("Winner of the hearts".to_string(), 8, 0),
+            poll_choice_state("Winner of the money".to_string(), 1, 20),
+        ];
+        assert_eq!(
+            winners_by(&choices, |c| c.votes).first().unwrap().title,
+            "Winner"
+        );
+        assert_eq!(
+            winners_by(&choices, |c| c.popular_votes())
+                .first()
+                .unwrap()
+                .title,
+            "Winner of the hearts"
+        );
+        assert_eq!(
+            winners_by(&choices, |c| c.channel_points_votes)
+                .first()
+                .unwrap()
+                .title,
+            "Winner of the money"
+        );
+    }
+
+    #[test]
+    fn test_winners_by_returns_multiple_winners_on_tie() {
+        let choices = [
+            poll_choice_state("First".to_string(), 10, 0),
+            poll_choice_state("Second".to_string(), 10, 0),
+            poll_choice_state("Loser".to_string(), 5, 0),
+        ];
+        let winners = winners_by(&choices, |c| c.votes);
+        assert_eq!(winners.len(), 2);
+        assert_eq!(winners[0].title, "First");
+        assert_eq!(winners[1].title, "Second");
+    }
+
+    #[test]
+    fn test_get_non_tied_winner() {
+        let state = PollStateData {
+            choices: vec![
+                poll_choice_state("Tied First A".to_string(), 10, 0),
+                poll_choice_state("Tied First B".to_string(), 10, 0),
+                poll_choice_state("Third".to_string(), 8, 0),
+                poll_choice_state("Loser".to_string(), 5, 0),
+            ],
+            ..PollStateData::default()
+        };
+        let non_tied = get_non_tied_winner(&state);
+        assert!(non_tied.is_some());
+        assert_eq!(non_tied.unwrap().title, "Third");
+    }
+
+    #[test]
+    fn test_winner_noun() {
+        assert_eq!(winner_noun(true, 1), "leader");
+        assert_eq!(winner_noun(true, 2), "leaders");
+        assert_eq!(winner_noun(false, 1), "winner");
+        assert_eq!(winner_noun(false, 2), "winners");
+        assert_eq!(winner_noun(true, 0), "leader");
+        assert_eq!(winner_noun(false, 0), "winner");
+    }
+}
