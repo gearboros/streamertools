@@ -27,7 +27,7 @@ pub struct PredictionTab {
 
 impl ConfigForm for PredictionTab {
     type Form = PredictionState;
-    const SUBDIR: &'static str = &"predictions";
+    const SUBDIR: &'static str = "predictions";
 
     fn form(&self) -> &Self::Form {
         &self.form
@@ -63,7 +63,7 @@ impl Named for PredictionState {
         &self.name
     }
 
-    fn set_name(&mut self, name: String) -> () {
+    fn set_name(&mut self, name: String) {
         self.name = name;
     }
 }

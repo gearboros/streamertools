@@ -23,26 +23,26 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum PollBarTabId {
     #[default]
-    TOTAL,
-    POINTS,
-    USERS,
+    Total,
+    Points,
+    Users,
 }
 
 impl PollBarTabId {
     pub fn idx(self) -> usize {
         match self {
-            PollBarTabId::USERS => 2,
-            PollBarTabId::POINTS => 1,
-            PollBarTabId::TOTAL => 0,
+            PollBarTabId::Users => 2,
+            PollBarTabId::Points => 1,
+            PollBarTabId::Total => 0,
         }
     }
 
     pub fn from_idx(idx: usize) -> Self {
         match idx {
-            0 => PollBarTabId::TOTAL,
-            1 => PollBarTabId::POINTS,
-            2 => PollBarTabId::USERS,
-            _ => PollBarTabId::TOTAL,
+            0 => PollBarTabId::Total,
+            1 => PollBarTabId::Points,
+            2 => PollBarTabId::Users,
+            _ => PollBarTabId::Total,
         }
     }
 }
@@ -57,7 +57,7 @@ pub struct PollTab {
 
 impl ConfigForm for PollTab {
     type Form = PollState;
-    const SUBDIR: &'static str = &"polls";
+    const SUBDIR: &'static str = "polls";
 
     fn form(&self) -> &Self::Form {
         &self.form
@@ -390,9 +390,9 @@ fn get_bar_chart(active_tab: PollBarTabId, d: &PollStateData) -> BarChart {
             color: get_choice_color(&d.choices, &c.id),
             title: c.title.clone(),
             value: {
-                if active_tab == PollBarTabId::POINTS {
+                if active_tab == PollBarTabId::Points {
                     c.channel_points_votes
-                } else if active_tab == PollBarTabId::USERS {
+                } else if active_tab == PollBarTabId::Users {
                     c.popular_votes()
                 } else {
                     c.votes
@@ -428,18 +428,18 @@ fn get_tab_bar(active_tab: PollBarTabId) -> Row<'static, Message> {
     row![
         tab_button(
             "Total",
-            colors[PollBarTabId::TOTAL.idx()],
-            PollBarTabId::TOTAL.idx()
+            colors[PollBarTabId::Total.idx()],
+            PollBarTabId::Total.idx()
         ),
         tab_button(
             "Points",
-            colors[PollBarTabId::POINTS.idx()],
-            PollBarTabId::POINTS.idx()
+            colors[PollBarTabId::Points.idx()],
+            PollBarTabId::Points.idx()
         ),
         tab_button(
             "Users",
-            colors[PollBarTabId::USERS.idx()],
-            PollBarTabId::USERS.idx()
+            colors[PollBarTabId::Users.idx()],
+            PollBarTabId::Users.idx()
         ),
     ]
 }
