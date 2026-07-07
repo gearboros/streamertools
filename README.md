@@ -12,6 +12,11 @@ For the use case, Twitch Streamer [DDRJake](https://twitch.tv/ddrjake) complaine
 prepare Twitch polls. So I thought I'd make a little tool that lets Streamers not only prepare polls, but also save
 templates and quickly reuse them. The rest is feature creep.
 
+## Current State
+
+This is an early release, I tested it with example polls / predictions, but only with two accounts. It has not been used
+on "real" big polls/predictions.
+
 ## Features
 
 * Creating and managing polls and predictions
