@@ -39,7 +39,7 @@ pub fn handle_base_changes<T: EditableForm>(
         }
         BaseFormMessage::RemoveOption(idx) => {
             let options = form.options_mut();
-            if options.len() > T::MIN_OPTIONS {
+            if options.len() > T::MIN_OPTIONS && idx < options.len() {
                 options.remove(idx);
             }
             Task::none()
