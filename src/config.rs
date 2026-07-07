@@ -1,3 +1,5 @@
+use crate::{App, Message};
+use iced::Task;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::fs;
@@ -16,6 +18,70 @@ impl ConfigList {
             items,
             selected: None,
             loaded: false,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum ConfigMessage {
+    Save,
+    New,
+    NameChanged(String),
+    ConfigSelected(String),
+}
+
+pub trait Named {
+    fn name(&self) -> &str;
+    fn set_name(&mut self, name: String) -> ();
+}
+
+pub trait ConfigForm {
+    type Form: DeserializeOwned + Serialize + Named;
+    const SUBDIR: &'static str;
+    fn form(&self) -> &Self::Form;
+    fn form_mut(&mut self) -> &mut Self::Form;
+    fn configs_mut(&mut self) -> &mut ConfigList;
+}
+
+pub fn handle_config<T: ConfigForm>(
+    config_path: &Path,
+    message: ConfigMessage,
+    tab: &mut T,
+) -> Task<Message> {
+    match message {
+        ConfigMessage::Save => {
+            if let Err(e) = save_config(config_path, T::SUBDIR, tab.form().name(), tab.form()) {
+                return Task::done(Message::Error(e.to_string()));
+            };
+            let name = tab.form().name().to_string();
+            let configs = tab.configs_mut();
+            configs.items = match App::load_files(config_path.join(T::SUBDIR)) {
+                Ok(files) => files,
+                Err(e) => return Task::done(Message::Error(e.to_string())),
+            };
+            configs.loaded = true;
+            configs.selected = Some(name);
+            Task::none()
+        }
+        ConfigMessage::New => {
+            tab.form_mut().set_name(String::new());
+            let configs = tab.configs_mut();
+            configs.loaded = false;
+            configs.selected = None;
+            Task::none()
+        }
+        ConfigMessage::NameChanged(name) => {
+            tab.form_mut().set_name(name);
+            Task::none()
+        }
+        ConfigMessage::ConfigSelected(name) => {
+            if let Some(state) = load_config::<T::Form>(config_path, T::SUBDIR, &name) {
+                *tab.form_mut() = state;
+                let configs = tab.configs_mut();
+                configs.selected = Some(name);
+                configs.loaded = true;
+            }
+            Task::none()
         }
     }
 }

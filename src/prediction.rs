@@ -1,5 +1,5 @@
 use crate::chart::{BarChart, BarData};
-use crate::config::{load_config, save_config, ConfigList};
+use crate::config::{handle_config, ConfigForm, ConfigList, ConfigMessage, Named};
 use crate::sample_data::{prediction_five, prediction_ongoing, prediction_ten, prediction_two};
 use crate::style::{bold_text, get_base_color, thousand_separator};
 use crate::twitch_api::{cancel_prediction, create_prediction, end_prediction, lock_prediction};
@@ -25,6 +25,23 @@ pub struct PredictionTab {
     pub active_tab: usize,
 }
 
+impl ConfigForm for PredictionTab {
+    type Form = PredictionState;
+    const SUBDIR: &'static str = &"predictions";
+
+    fn form(&self) -> &Self::Form {
+        &self.form
+    }
+
+    fn form_mut(&mut self) -> &mut Self::Form {
+        &mut self.form
+    }
+
+    fn configs_mut(&mut self) -> &mut ConfigList {
+        &mut self.configs
+    }
+}
+
 #[derive(Default, Debug, Clone, Eq, PartialEq)]
 pub enum PredictionRun {
     #[default]
@@ -41,6 +58,16 @@ pub struct PredictionState {
     pub name: String,
 }
 
+impl Named for PredictionState {
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn set_name(&mut self, name: String) -> () {
+        self.name = name;
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum PredictionMessage {
     TitleChanged(String),
@@ -54,10 +81,7 @@ pub enum PredictionMessage {
     PredictionEnded(Result<CreatePredictionResponseData, String>),
     PredictionLocked(Result<CreatePredictionResponseData, String>),
     PredictionCanceled(Result<CreatePredictionResponseData, String>),
-    ConfigSelected(String),
-    SaveConfig,
-    NewConfig,
-    NameChanged(String),
+    Config(ConfigMessage),
     SwitchOptions,
     LockPrediction,
     CancelPrediction,
@@ -72,44 +96,6 @@ impl App {
         match pred_message {
             TitleChanged(t) => {
                 self.prediction.form.title = t;
-                Task::none()
-            }
-            SaveConfig => {
-                if let Err(e) = save_config(
-                    &self.config_path,
-                    "predictions",
-                    &self.prediction.form.name,
-                    &self.prediction.form,
-                ) {
-                    return Task::done(Message::Error(e.to_string()));
-                };
-                self.prediction.configs.items =
-                    match Self::load_files(self.config_path.join("predictions")) {
-                        Ok(predictions) => predictions,
-                        Err(e) => return Task::done(Message::Error(e)),
-                    };
-                self.prediction.configs.selected = Some(self.prediction.form.name.clone());
-                self.prediction.configs.loaded = true;
-                Task::none()
-            }
-            NewConfig => {
-                self.prediction.form.name = String::new();
-                self.prediction.configs.loaded = false;
-                self.prediction.configs.selected = None;
-                Task::none()
-            }
-            ConfigSelected(c) => {
-                if let Some(state) =
-                    load_config::<PredictionState>(&self.config_path, "predictions", &c)
-                {
-                    self.prediction.form = state;
-                    self.prediction.configs.loaded = true;
-                    self.prediction.configs.selected = Some(c);
-                }
-                Task::none()
-            }
-            NameChanged(name) => {
-                self.prediction.form.name = name;
                 Task::none()
             }
             SwitchOptions => {
@@ -234,6 +220,7 @@ impl App {
                 self.prediction.active_tab = idx;
                 Task::none()
             }
+            Config(c) => handle_config(&self.config_path, c, &mut self.prediction),
         }
     }
 
@@ -280,10 +267,10 @@ impl App {
         let config_row = config_bar(
             &self.prediction.configs,
             &state.name,
-            |t| Message::Prediction(PredictionMessage::ConfigSelected(t)),
-            |n| Message::Prediction(PredictionMessage::NameChanged(n)),
-            Message::Prediction(PredictionMessage::NewConfig),
-            Message::Prediction(PredictionMessage::SaveConfig),
+            |t| Message::Prediction(PredictionMessage::Config(ConfigMessage::ConfigSelected(t))),
+            |n| Message::Prediction(PredictionMessage::Config(ConfigMessage::NameChanged(n))),
+            Message::Prediction(PredictionMessage::Config(ConfigMessage::New)),
+            Message::Prediction(PredictionMessage::Config(ConfigMessage::Save)),
         );
 
         let title_input = text_input("Prediction title", &state.title)

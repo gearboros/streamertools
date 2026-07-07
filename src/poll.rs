@@ -1,5 +1,5 @@
 use crate::chart::{BarChart, BarData};
-use crate::config::{load_config, save_config, ConfigList};
+use crate::config::{handle_config, ConfigForm, ConfigList, ConfigMessage, Named};
 use crate::poll::PollMessage::DurationChange;
 use crate::sample_data::{
     poll_points_winner, poll_popular_winner, poll_tie, poll_total_winner, running_poll,
@@ -55,6 +55,23 @@ pub struct PollTab {
     pub active_tab: PollBarTabId,
 }
 
+impl ConfigForm for PollTab {
+    type Form = PollState;
+    const SUBDIR: &'static str = &"polls";
+
+    fn form(&self) -> &Self::Form {
+        &self.form
+    }
+
+    fn form_mut(&mut self) -> &mut Self::Form {
+        &mut self.form
+    }
+
+    fn configs_mut(&mut self) -> &mut ConfigList {
+        &mut self.configs
+    }
+}
+
 #[derive(Default, Debug, Clone, Eq, PartialEq)]
 pub enum PollRun {
     #[default]
@@ -71,6 +88,16 @@ pub struct PollState {
     pub uses_channel_points: bool,
     pub channel_point_cost: usize,
     pub name: String,
+}
+
+impl Named for PollState {
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn set_name(&mut self, name: String) {
+        self.name = name;
+    }
 }
 
 impl App {
@@ -152,41 +179,7 @@ impl App {
                 )
             }
             PollEnded(r) => self.set_poll_run(r),
-            SaveConfig => {
-                if let Err(e) = save_config(
-                    &self.config_path,
-                    "polls",
-                    &self.poll.form.name,
-                    &self.poll.form,
-                ) {
-                    return Task::done(Message::Error(e.to_string()));
-                };
-                self.poll.configs.items = match Self::load_files(self.config_path.join("polls")) {
-                    Ok(polls) => polls,
-                    Err(e) => return Task::done(Message::Error(e)),
-                };
-                self.poll.configs.selected = Some(self.poll.form.name.clone());
-                self.poll.configs.loaded = true;
-                Task::none()
-            }
-            ConfigSelected(c) => {
-                if let Some(state) = load_config::<PollState>(&self.config_path, "polls", &c) {
-                    self.poll.configs.selected = Some(state.name.clone());
-                    self.poll.configs.loaded = true;
-                    self.poll.form = state;
-                }
-                Task::none()
-            }
-            NewConfig => {
-                self.poll.form.name = String::new();
-                self.poll.configs.loaded = false;
-                self.poll.configs.selected = None;
-                Task::none()
-            }
-            NameChanged(name) => {
-                self.poll.form.name = name;
-                Task::none()
-            }
+            Config(c) => handle_config(&self.config_path, c, &mut self.poll),
             LoadSampleData(data) => {
                 self.poll.run = PollRun::Live(data);
                 Task::none()
@@ -220,10 +213,10 @@ impl App {
         let save_row = config_bar(
             &self.poll.configs,
             &state.name,
-            |t| Message::Poll(PollMessage::ConfigSelected(t)),
-            |n| Message::Poll(PollMessage::NameChanged(n)),
-            Message::Poll(PollMessage::NewConfig),
-            Message::Poll(PollMessage::SaveConfig),
+            |t| Message::Poll(PollMessage::Config(ConfigMessage::ConfigSelected(t))),
+            |n| Message::Poll(PollMessage::Config(ConfigMessage::NameChanged(n))),
+            Message::Poll(PollMessage::Config(ConfigMessage::New)),
+            Message::Poll(PollMessage::Config(ConfigMessage::Save)),
         );
 
         let title_input = text_input("Poll title", &state.title)
@@ -605,10 +598,7 @@ pub enum PollMessage {
     PointCostChange(usize),
     EndPoll,
     PollEnded(Result<PollStateData, String>),
-    ConfigSelected(String),
-    SaveConfig,
-    NewConfig,
-    NameChanged(String),
+    Config(ConfigMessage),
     LoadSampleData(PollStateData),
     TabSelected(PollBarTabId),
 }
