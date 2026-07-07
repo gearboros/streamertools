@@ -1,6 +1,6 @@
+use crate::base_form::{handle_base_changes, BaseFormMessage, EditableForm};
 use crate::chart::{BarChart, BarData};
 use crate::config::{handle_config, ConfigForm, ConfigList, ConfigMessage, Named};
-use crate::poll::PollMessage::DurationChange;
 use crate::sample_data::{
     poll_points_winner, poll_popular_winner, poll_tie, poll_total_winner, running_poll,
 };
@@ -100,14 +100,26 @@ impl Named for PollState {
     }
 }
 
+impl EditableForm for PollState {
+    const MAX_OPTIONS: usize = 5;
+
+    fn options_mut(&mut self) -> &mut Vec<String> {
+        &mut self.options
+    }
+
+    fn set_duration(&mut self, d: usize) {
+        self.duration = d;
+    }
+
+    fn set_title(&mut self, title: String) {
+        self.title = title;
+    }
+}
+
 impl App {
     pub fn handle_poll(&mut self, poll_message: PollMessage) -> Task<Message> {
         use crate::poll::PollMessage::*;
         match poll_message {
-            TitleChanged(t) => {
-                self.poll.form.title = t;
-                Task::none()
-            }
             Submit => {
                 let (token, broadcaster_id) = match self.require_token_and_broadcaster_id() {
                     Ok(v) => v,
@@ -134,27 +146,7 @@ impl App {
                     |r| Message::Poll(PollCreated(r)),
                 )
             }
-            OptionChanged(idx, val) => {
-                if let Some(o) = self.poll.form.options.get_mut(idx) {
-                    *o = val;
-                }
-                Task::none()
-            }
-            AddOption => {
-                self.poll.form.options.push(String::new());
-                Task::none()
-            }
-            RemoveOption(idx) => {
-                if self.poll.form.options.len() > 2 {
-                    self.poll.form.options.remove(idx);
-                }
-                Task::none()
-            }
             PollCreated(r) => self.set_poll_run(r),
-            DurationChange(d) => {
-                self.poll.form.duration = d;
-                Task::none()
-            }
             ChannelPointsToggled(t) => {
                 self.poll.form.uses_channel_points = t;
                 Task::none()
@@ -188,6 +180,7 @@ impl App {
                 self.poll.active_tab = idx;
                 Task::none()
             }
+            BaseFormChange(b) => handle_base_changes(&mut self.poll.form, b),
         }
     }
 
@@ -219,24 +212,39 @@ impl App {
             Message::Poll(PollMessage::Config(ConfigMessage::Save)),
         );
 
-        let title_input = text_input("Poll title", &state.title)
-            .on_input(|r| Message::Poll(PollMessage::TitleChanged(r)));
+        let title_input = text_input("Poll title", &state.title).on_input(|r| {
+            Message::Poll(PollMessage::BaseFormChange(BaseFormMessage::TitleChanged(
+                r,
+            )))
+        });
 
         let opt_col = option_editor(
             &state.options,
             editable,
-            |i, s| Message::Poll(PollMessage::OptionChanged(i, s)),
-            |idx| Message::Poll(PollMessage::RemoveOption(idx)),
+            |i, s| {
+                Message::Poll(PollMessage::BaseFormChange(BaseFormMessage::OptionChanged(
+                    i, s,
+                )))
+            },
+            |idx| {
+                Message::Poll(PollMessage::BaseFormChange(BaseFormMessage::RemoveOption(
+                    idx,
+                )))
+            },
         );
 
         let mut add_btn = button(text("+").center()).width(30);
-        if editable && state.options.len() < 5 {
-            add_btn = add_btn.on_press(Message::Poll(PollMessage::AddOption));
+        if editable && state.options.len() < PollState::MAX_OPTIONS {
+            add_btn = add_btn.on_press(Message::Poll(PollMessage::BaseFormChange(
+                BaseFormMessage::AddOption,
+            )));
         }
         let option_btn_row = row![add_btn].spacing(SPACING);
 
         let duration_row = duration_row(editable, &state.duration, |d| {
-            Message::Poll(DurationChange(d))
+            Message::Poll(PollMessage::BaseFormChange(
+                BaseFormMessage::DurationChanged(d),
+            ))
         });
 
         let channel_point_check: Checkbox<_> = checkbox(state.uses_channel_points)
@@ -587,13 +595,9 @@ fn get_votes_result(
 }
 #[derive(Debug, Clone)]
 pub enum PollMessage {
-    TitleChanged(String),
-    OptionChanged(usize, String),
-    AddOption,
-    RemoveOption(usize),
+    BaseFormChange(BaseFormMessage),
     Submit,
     PollCreated(Result<PollStateData, String>),
-    DurationChange(usize),
     ChannelPointsToggled(bool),
     PointCostChange(usize),
     EndPoll,

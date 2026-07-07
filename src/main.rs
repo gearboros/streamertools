@@ -1,4 +1,5 @@
 mod auth;
+mod base_form;
 mod chart;
 mod config;
 mod poll;

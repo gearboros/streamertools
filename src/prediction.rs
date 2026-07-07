@@ -1,3 +1,4 @@
+use crate::base_form::{handle_base_changes, BaseFormMessage, EditableForm};
 use crate::chart::{BarChart, BarData};
 use crate::config::{handle_config, ConfigForm, ConfigList, ConfigMessage, Named};
 use crate::sample_data::{prediction_five, prediction_ongoing, prediction_ten, prediction_two};
@@ -68,15 +69,27 @@ impl Named for PredictionState {
     }
 }
 
+impl EditableForm for PredictionState {
+    const MAX_OPTIONS: usize = 10;
+
+    fn options_mut(&mut self) -> &mut Vec<String> {
+        &mut self.options
+    }
+
+    fn set_duration(&mut self, d: usize) {
+        self.duration = d;
+    }
+
+    fn set_title(&mut self, title: String) {
+        self.title = title;
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum PredictionMessage {
-    TitleChanged(String),
-    OptionChanged(usize, String),
-    AddOption,
-    RemoveOption(usize),
+    BaseFormChange(BaseFormMessage),
     Submit,
     PredictionCreated(Result<CreatePredictionResponseData, String>),
-    DurationChange(usize),
     WinnerChosen(String),
     PredictionEnded(Result<CreatePredictionResponseData, String>),
     PredictionLocked(Result<CreatePredictionResponseData, String>),
@@ -94,31 +107,11 @@ impl App {
     pub fn handle_pred(&mut self, pred_message: PredictionMessage) -> Task<Message> {
         use prediction::PredictionMessage::*;
         match pred_message {
-            TitleChanged(t) => {
-                self.prediction.form.title = t;
-                Task::none()
-            }
             SwitchOptions => {
                 if self.prediction.form.options.len() == 2 {
                     self.prediction.form.options.swap(0, 1);
                 } else {
                     self.prediction.form.options.shuffle(&mut rng())
-                }
-                Task::none()
-            }
-            OptionChanged(idx, val) => {
-                if let Some(o) = self.prediction.form.options.get_mut(idx) {
-                    *o = val;
-                }
-                Task::none()
-            }
-            AddOption => {
-                self.prediction.form.options.push(String::new());
-                Task::none()
-            }
-            RemoveOption(idx) => {
-                if self.prediction.form.options.len() > 2 {
-                    self.prediction.form.options.remove(idx);
                 }
                 Task::none()
             }
@@ -147,10 +140,6 @@ impl App {
                 )
             }
             PredictionCreated(r) => self.set_prediction_phase(r),
-            DurationChange(d) => {
-                self.prediction.form.duration = d;
-                Task::none()
-            }
             WinnerChosen(id) => {
                 let (token, broadcaster_id) = match self.require_token_and_broadcaster_id() {
                     Ok(v) => v,
@@ -221,6 +210,7 @@ impl App {
                 Task::none()
             }
             Config(c) => handle_config(&self.config_path, c, &mut self.prediction),
+            BaseFormChange(b) => handle_base_changes(&mut self.prediction.form, b),
         }
     }
 
@@ -273,16 +263,27 @@ impl App {
             Message::Prediction(PredictionMessage::Config(ConfigMessage::Save)),
         );
 
-        let title_input = text_input("Prediction title", &state.title)
-            .on_input(|r| Message::Prediction(PredictionMessage::TitleChanged(r)));
+        let title_input = text_input("Prediction title", &state.title).on_input(|r| {
+            Message::Prediction(PredictionMessage::BaseFormChange(
+                BaseFormMessage::TitleChanged(r),
+            ))
+        });
         let mut opt_col: Column<_> = iced::widget::column![].spacing(SPACING);
 
         if editable {
             opt_col = option_editor(
                 &state.options,
                 editable,
-                |i, s| Message::Prediction(PredictionMessage::OptionChanged(i, s)),
-                |idx| Message::Prediction(PredictionMessage::RemoveOption(idx)),
+                |i, s| {
+                    Message::Prediction(PredictionMessage::BaseFormChange(
+                        BaseFormMessage::OptionChanged(i, s),
+                    ))
+                },
+                |idx| {
+                    Message::Prediction(PredictionMessage::BaseFormChange(
+                        BaseFormMessage::RemoveOption(idx),
+                    ))
+                },
             );
         } else {
             // list of options with win buttons
@@ -307,8 +308,10 @@ impl App {
         let mut switch_btn = button("Switch Options");
         let mut shuffle_btn = button("Shuffle Options");
         if editable {
-            if state.options.len() < 10 {
-                add_btn = add_btn.on_press(Message::Prediction(PredictionMessage::AddOption));
+            if state.options.len() < PredictionState::MAX_OPTIONS {
+                add_btn = add_btn.on_press(Message::Prediction(PredictionMessage::BaseFormChange(
+                    BaseFormMessage::AddOption,
+                )));
             }
             switch_btn = switch_btn.on_press(Message::Prediction(PredictionMessage::SwitchOptions));
             shuffle_btn =
@@ -322,7 +325,9 @@ impl App {
         }
 
         let duration_row = duration_row(editable, &state.duration, |d| {
-            Message::Prediction(PredictionMessage::DurationChange(d))
+            Message::Prediction(PredictionMessage::BaseFormChange(
+                BaseFormMessage::DurationChanged(d),
+            ))
         });
 
         let mut submit_btn = button("Submit");
