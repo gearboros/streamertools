@@ -10,6 +10,8 @@ pub enum PredictionStatus {
     Active,
     Locked,
     Canceled,
+    #[serde(other)]
+    Unknown,
 }
 
 impl PredictionStatus {
@@ -19,6 +21,7 @@ impl PredictionStatus {
             PredictionStatus::Active => "ACTIVE",
             PredictionStatus::Locked => "LOCKED",
             PredictionStatus::Canceled => "CANCELED",
+            PredictionStatus::Unknown => "UNKNOWN",
         }
     }
 }
@@ -107,6 +110,10 @@ pub enum PollPhase {
     Terminated,
     Archived,
     Completed,
+    Moderated,
+    Invalid,
+    #[serde(other)]
+    Unknown,
 }
 
 #[derive(Deserialize, Serialize, Default, Debug, Clone, Eq, PartialEq)]

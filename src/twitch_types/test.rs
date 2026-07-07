@@ -76,6 +76,12 @@ mod prediction {
             assert_eq!(parsed, expected);
         }
     }
+
+    #[test]
+    fn unrecognized_status_falls_back_to_unknown() {
+        let parsed: PredictionStatus = serde_json::from_str("\"SOMETHING_NEW\"").unwrap();
+        assert_eq!(parsed, PredictionStatus::Unknown);
+    }
 }
 
 mod poll {
@@ -102,12 +108,20 @@ mod poll {
             ("TERMINATED", PollPhase::Terminated),
             ("ARCHIVED", PollPhase::Archived),
             ("COMPLETED", PollPhase::Completed),
+            ("MODERATED", PollPhase::Moderated),
+            ("INVALID", PollPhase::Invalid),
         ];
         for (json_str, expected) in phases {
             let json = format!("\"{}\"", json_str);
             let parsed: PollPhase = serde_json::from_str(&json).unwrap();
             assert_eq!(parsed, expected);
         }
+    }
+
+    #[test]
+    fn unrecognized_phase_falls_back_to_unknown() {
+        let parsed: PollPhase = serde_json::from_str("\"SOMETHING_NEW\"").unwrap();
+        assert_eq!(parsed, PollPhase::Unknown);
     }
 }
 

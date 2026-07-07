@@ -326,13 +326,12 @@ impl App {
                 },
             );
         } else {
-            // list of options with win buttons
-            let options: &[PredictionOutcome] = if let PredictionRun::Live(d) = &self.prediction.run
-            {
-                &d.outcomes
-            } else {
-                &[]
-            };
+            let options: Vec<PredictionOutcome> =
+                if let PredictionRun::Live(d) = &self.prediction.run {
+                    ordered_outcomes(&d.outcomes, &state.options)
+                } else {
+                    Vec::new()
+                };
             for option in options.iter() {
                 let text = Text::new(option.title.clone()).width(Length::Fill);
                 let mut win_btn = button("Winner!");
@@ -385,7 +384,10 @@ impl App {
                 cancel_btn.on_press(Message::Prediction(PredictionMessage::CancelPrediction));
         }
         let mut reset_btn = button("Reset").style(style::neutral_button);
-        if phase == Some(PredictionStatus::Resolved) || phase == Some(PredictionStatus::Canceled) {
+        if phase == Some(PredictionStatus::Resolved)
+            || phase == Some(PredictionStatus::Canceled)
+            || phase == Some(PredictionStatus::Unknown)
+        {
             reset_btn = reset_btn.on_press(Message::Prediction(PredictionMessage::ResetPrediction));
         }
         let btn_row = row![submit_btn, lock_btn, cancel_btn, reset_btn].spacing(SPACING);
@@ -429,7 +431,11 @@ impl App {
             ];
         }
 
-        let status_display = get_state_view(&self.prediction.run, self.prediction.active_tab);
+        let status_display = get_state_view(
+            &self.prediction.run,
+            self.prediction.active_tab,
+            &state.options,
+        );
 
         let form = column![
             config_row,
@@ -454,9 +460,26 @@ impl App {
     }
 }
 
+/// probably overkill, but make sure the sorting of twitch outcomes matches the order the user defined optionsi n
+fn ordered_outcomes(
+    outcomes: &[PredictionOutcome],
+    form_options: &[String],
+) -> Vec<PredictionOutcome> {
+    let mut ordered = outcomes.to_vec();
+    // stable sort: unmatched titles keep their relative response order
+    ordered.sort_by_key(|o| {
+        form_options
+            .iter()
+            .position(|t| t == &o.title)
+            .unwrap_or(usize::MAX)
+    });
+    ordered
+}
+
 fn get_state_view(
     run: &PredictionRun,
     active_tab: usize,
+    form_options: &[String],
 ) -> Element<'static, Message, Theme, Renderer> {
     if let PredictionRun::Live(current) = run {
         match current.status {
@@ -467,7 +490,7 @@ fn get_state_view(
                         error!("{}", e);
                         return column![
                             Text::new(format!("Could not determine winner: {e}")),
-                            get_points_distribution(&Some(current), active_tab)
+                            get_points_distribution(&Some(current), active_tab, form_options)
                         ]
                         .spacing(SPACING)
                         .into();
@@ -489,24 +512,30 @@ fn get_state_view(
                         bold_text(winner.title.clone()),
                         Text::new(format!(" ({ratio:.2}x)")),
                     ],
-                    get_points_distribution(&Some(current), active_tab)
+                    get_points_distribution(&Some(current), active_tab, form_options)
                 ]
                 .spacing(SPACING)
                 .into()
             }
             PredictionStatus::Active => column![
                 Text::new("Voting active, currently at:"),
-                get_points_distribution(&Some(current), active_tab)
+                get_points_distribution(&Some(current), active_tab, form_options)
             ]
             .spacing(SPACING)
             .into(),
             PredictionStatus::Locked => column![
                 Text::new("Voting closed, prediction active."),
-                get_points_distribution(&Some(current), active_tab)
+                get_points_distribution(&Some(current), active_tab, form_options)
             ]
             .spacing(SPACING)
             .into(),
             PredictionStatus::Canceled => Text::new("Prediction cancelled.").into(),
+            PredictionStatus::Unknown => column![
+                Text::new("Prediction is in a state this app doesn't know."),
+                get_points_distribution(&Some(current), active_tab, form_options)
+            ]
+            .spacing(SPACING)
+            .into(),
         }
     } else {
         crate::widgets::empty_panel("🎲", "No prediction running yet")
@@ -570,6 +599,7 @@ async fn poll_until_settled(
 fn get_points_distribution(
     state: &Option<&CreatePredictionResponseData>,
     active_tab: usize,
+    form_options: &[String],
 ) -> Element<'static, Message, Theme, Renderer> {
     let Some(state) = *state else {
         return Text::new("No Prediction Active").into();
@@ -580,8 +610,20 @@ fn get_points_distribution(
     let total_points = state.outcomes.iter().map(|o| o.channel_points).sum::<i64>();
     let total_users = state.outcomes.iter().map(|o| o.users).sum::<i64>();
 
-    let mut by_points = state.outcomes.clone();
-    by_points.sort_by_key(|o| std::cmp::Reverse(o.channel_points));
+    let outcomes = ordered_outcomes(&state.outcomes, form_options);
+
+    let bar_chart = canvas(BarChart {
+        data: outcomes
+            .iter()
+            .map(|c| BarData {
+                color: get_base_color(&c.color),
+                title: c.title.clone(),
+                value: c.channel_points,
+            })
+            .collect(),
+    })
+    .width(Length::Fill)
+    .height(Length::Fill);
 
     let mut title_col: Column<_> = column![bold_text("".to_string())].spacing(SPACING);
     let mut point_col: Column<_> = column![bold_text("Points".to_string())].spacing(SPACING);
@@ -591,7 +633,7 @@ fn get_points_distribution(
     let mut tab_bar = row![];
     let mut tab_content = HashMap::new();
 
-    for (idx, o) in by_points.into_iter().enumerate() {
+    for (idx, o) in outcomes.into_iter().enumerate() {
         let (user_percent, point_percent) = get_percentages(total_points, total_users, &o);
         title_col = title_col.push(text(format!("• {}", o.title.clone())));
         point_col = point_col.push(text(format!(
@@ -654,21 +696,6 @@ fn get_points_distribution(
             content_col = content_col.push(text("No predictors yet"));
         }
     }
-
-    let bar_chart = canvas(BarChart {
-        data: state
-            .outcomes
-            .clone()
-            .iter()
-            .map(|c| BarData {
-                color: get_base_color(&c.color),
-                title: c.title.clone(),
-                value: c.channel_points,
-            })
-            .collect(),
-    })
-    .width(Length::Fill)
-    .height(Length::Fill);
 
     container(
         column![
@@ -771,6 +798,36 @@ mod tests {
         // Nobody predicted the winning outcome, so there is nothing to settle.
         assert!(!payouts_pending(&resolved_with(None)));
         assert!(!payouts_pending(&resolved_with(Some(vec![]))));
+    }
+
+    #[test]
+    fn ordered_outcomes_follows_form_order() {
+        // Twitch response order differs from the form; display must follow the form.
+        let outcomes = vec![outcome("b", None), outcome("c", None), outcome("a", None)];
+        let form: Vec<String> = ["a", "b", "c"].map(String::from).into();
+        let titles: Vec<String> = super::ordered_outcomes(&outcomes, &form)
+            .into_iter()
+            .map(|o| o.title)
+            .collect();
+        assert_eq!(titles, ["a", "b", "c"]);
+    }
+
+    #[test]
+    fn ordered_outcomes_puts_unknown_titles_last_in_response_order() {
+        // Titles not in the form (sample data, config loaded mid-run) keep their
+        // response order after the matched ones.
+        let outcomes = vec![
+            outcome("x", None),
+            outcome("b", None),
+            outcome("y", None),
+            outcome("a", None),
+        ];
+        let form: Vec<String> = ["a", "b"].map(String::from).into();
+        let titles: Vec<String> = super::ordered_outcomes(&outcomes, &form)
+            .into_iter()
+            .map(|o| o.title)
+            .collect();
+        assert_eq!(titles, ["a", "b", "x", "y"]);
     }
 
     #[test]
