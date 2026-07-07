@@ -573,7 +573,7 @@ fn get_votes_result(
         );
         votes_col = votes_col.push(text(format!("{} votes, {:.2}%", o.votes, vote_percent)));
         user_col = user_col.push(text(format!(
-            "{} votes, {:05.2}%",
+            "{} votes, {:.2}%",
             o.popular_votes(),
             pop_vote_percent
         )));
