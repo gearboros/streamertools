@@ -1,7 +1,8 @@
 use crate::twitch_types::*;
 use crate::CLIENT_ID;
 use reqwest::{RequestBuilder, Response};
-use tracing::error;
+use serde::de::DeserializeOwned;
+use tracing::{debug, error};
 
 macro_rules! create_helix_url {
     ($path:literal) => {
@@ -29,13 +30,22 @@ pub async fn create_poll(
     extract_poll_response(resp).await
 }
 
+/// centralized parsing to enable logging of all json responses for RUST_LOG=debug
+async fn parse_json<T: DeserializeOwned>(resp: Response) -> Result<T, String> {
+    let body = resp.text().await.map_err(|e| {
+        error!("Failed to read response body: {}", e);
+        e.to_string()
+    })?;
+    debug!("Twitch response body: {}", body);
+    serde_json::from_str(&body).map_err(|e| {
+        error!("Parse error: {} (body: {})", e, body);
+        e.to_string()
+    })
+}
+
 async fn extract_poll_response(resp: Response) -> Result<PollStateData, String> {
-    resp.json::<PollStateResponse>()
-        .await
-        .map_err(|e| {
-            error!("Parse error: {}", e);
-            e.to_string()
-        })?
+    parse_json::<PollStateResponse>(resp)
+        .await?
         .data
         .into_iter()
         .next()
@@ -81,12 +91,8 @@ pub async fn create_prediction(
 async fn extract_prediction_response(
     resp: Response,
 ) -> Result<CreatePredictionResponseData, String> {
-    resp.json::<CreatePredictionResponse>()
-        .await
-        .map_err(|e| {
-            error!("Parse error: {}", e);
-            e.to_string()
-        })?
+    parse_json::<CreatePredictionResponse>(resp)
+        .await?
         .data
         .into_iter()
         .next()
