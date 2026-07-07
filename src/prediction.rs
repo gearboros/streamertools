@@ -3,7 +3,9 @@ use crate::chart::{BarChart, BarData};
 use crate::config::{handle_config, ConfigForm, ConfigList, ConfigMessage, Named};
 use crate::sample_data::{prediction_five, prediction_ongoing, prediction_ten, prediction_two};
 use crate::style::{bold_text, get_base_color, thousand_separator};
-use crate::twitch_api::{cancel_prediction, create_prediction, end_prediction, lock_prediction};
+use crate::twitch_api::{
+    cancel_prediction, check_prediction, create_prediction, end_prediction, lock_prediction,
+};
 use crate::twitch_types::{
     CreatePredictionRequest, CreatePredictionResponseData, EndPredictionRequest, PollChoice,
     PredictionOutcome, PredictionStatus,
@@ -16,6 +18,7 @@ use rand::prelude::SliceRandom;
 use rand::rng;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::time::Duration;
 use tracing::error;
 
 #[derive(Default, Debug)]
@@ -92,6 +95,7 @@ pub enum PredictionMessage {
     PredictionCreated(Result<CreatePredictionResponseData, String>),
     WinnerChosen(String),
     PredictionEnded(Result<CreatePredictionResponseData, String>),
+    PredictionSettled(Result<CreatePredictionResponseData, String>),
     PredictionLocked(Result<CreatePredictionResponseData, String>),
     PredictionCanceled(Result<CreatePredictionResponseData, String>),
     Config(ConfigMessage),
@@ -162,7 +166,43 @@ impl App {
                     |r| Message::Prediction(PredictionEnded(r)),
                 )
             }
-            PredictionEnded(r) => self.set_prediction_phase(r),
+            PredictionEnded(r) => {
+                // Twitch flips a prediction to RESOLVED immediately but distributes the
+                // channel-point payouts asynchronously, so the resolve response reports
+                // channel_points_won = 0 for everyone. When that's the case, keep the
+                // resolved prediction on screen and poll until the winnings settle.
+                match r {
+                    Ok(data) if payouts_pending(&data) => {
+                        self.prediction.run = PredictionRun::Live(data.clone());
+                        let (token, broadcaster_id) = match self.require_token_and_broadcaster_id()
+                        {
+                            Ok(v) => v,
+                            // Already showing the resolved prediction; just can't refresh.
+                            Err(_) => return Task::none(),
+                        };
+                        let client = self.client.clone();
+                        let prediction_id = data.id.clone();
+                        Task::perform(
+                            poll_until_settled(client, broadcaster_id, prediction_id, token),
+                            |r| Message::Prediction(PredictionSettled(r)),
+                        )
+                    }
+                    other => self.set_prediction_phase(other),
+                }
+            }
+            PredictionSettled(r) => match r {
+                Ok(data) => {
+                    self.prediction.run = PredictionRun::Live(data);
+                    Task::none()
+                }
+                // Keep the already-displayed resolved prediction rather than clobbering
+                // the view with an error: the winner is correct, only the payout numbers
+                // may be stale.
+                Err(e) => {
+                    error!("Failed to refresh prediction payouts: {e}");
+                    Task::none()
+                }
+            },
             LockPrediction => {
                 let (token, broadcaster_id) = match self.require_token_and_broadcaster_id() {
                     Ok(v) => v,
@@ -485,6 +525,48 @@ fn get_winner(current: &CreatePredictionResponseData) -> Result<&PredictionOutco
         .ok_or_else(|| format!("Winning outcome {winner_id} not found in prediction outcomes."))
 }
 
+/// Twitch API is a bit weird and says status RESOLVED before payouts are calculated
+/// so we need to actually check for payouts, because status information is useless
+fn payouts_pending(data: &CreatePredictionResponseData) -> bool {
+    if data.status != PredictionStatus::Resolved {
+        return false;
+    }
+    match get_winner(data)
+        .ok()
+        .and_then(|o| o.top_predictors.as_ref())
+    {
+        Some(preds) => !preds.is_empty() && preds.iter().all(|p| p.channel_points_won == 0),
+        None => false,
+    }
+}
+
+/// prediction is seen as settled when status=Resolved AND payouts exist
+async fn poll_until_settled(
+    client: reqwest::Client,
+    broadcaster_id: String,
+    prediction_id: String,
+    token: String,
+) -> Result<CreatePredictionResponseData, String> {
+    const MAX_ATTEMPTS: usize = 10;
+    const DELAY: Duration = Duration::from_secs(1);
+
+    let mut last = Err("Prediction payout poll made no attempts".to_string());
+    for _ in 0..MAX_ATTEMPTS {
+        tokio::time::sleep(DELAY).await;
+        match check_prediction(&client, &broadcaster_id, &prediction_id, &token).await {
+            Ok(data) => {
+                let settled = !payouts_pending(&data);
+                last = Ok(data);
+                if settled {
+                    break;
+                }
+            }
+            Err(e) => last = Err(e),
+        }
+    }
+    last
+}
+
 fn get_points_distribution(
     state: &Option<&CreatePredictionResponseData>,
     active_tab: usize,
@@ -493,6 +575,8 @@ fn get_points_distribution(
         return Text::new("No Prediction Active").into();
     };
     let resolved = state.status == PredictionStatus::Resolved;
+    // prediction RESOLVED but still no winner information
+    let settling = resolved && payouts_pending(state);
     let total_points = state.outcomes.iter().map(|o| o.channel_points).sum::<i64>();
     let total_users = state.outcomes.iter().map(|o| o.users).sum::<i64>();
 
@@ -533,7 +617,9 @@ fn get_points_distribution(
                     d.user_name,
                     thousand_separator(d.channel_points_used)
                 );
-                if resolved {
+                if settling {
+                    line.push_str(", settling…");
+                } else if resolved {
                     if d.channel_points_won > 0 {
                         line.push_str(&format!(
                             ", won {}",
