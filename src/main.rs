@@ -351,7 +351,8 @@ fn main() -> iced::Result {
     let sample = std::env::args().any(|x| x == "--sample");
 
     // create all config dirs
-    let proj = ProjectDirs::from("dev", "gearboros", "streamertools").unwrap();
+    let proj = ProjectDirs::from("dev", "gearboros", "streamertools")
+        .expect("Could not determine a config directory for this platform (no valid home directory found)");
     let config_path = proj.config_dir().to_path_buf();
     fs::create_dir_all(config_path.clone()).expect("Could not create config directory");
     fs::create_dir_all(config_path.join("polls")).expect("Could not create polls directory");

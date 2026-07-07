@@ -107,7 +107,7 @@ pub fn bold_text<'a>(text: String) -> Text<'a> {
 }
 
 /// Groups digits with `.` (European style: `1.000.000`), not the comma English readers expect.
-pub fn thousand_separator(number: i32) -> String {
+pub fn thousand_separator(number: i64) -> String {
     let s = number.to_string();
     let (sign, digits) = match s.strip_prefix('-') {
         Some(rest) => ("-", rest),
@@ -169,8 +169,10 @@ mod tests {
 
     #[test]
     fn extremes() {
-        assert_eq!(thousand_separator(i32::MAX), "2.147.483.647");
-        assert_eq!(thousand_separator(i32::MIN), "-2.147.483.648");
+        assert_eq!(thousand_separator(i32::MAX as i64), "2.147.483.647");
+        assert_eq!(thousand_separator(i32::MIN as i64), "-2.147.483.648");
+        assert_eq!(thousand_separator(i64::MAX), "9.223.372.036.854.775.807");
+        assert_eq!(thousand_separator(i64::MIN), "-9.223.372.036.854.775.808");
     }
 }
 

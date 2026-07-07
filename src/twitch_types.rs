@@ -47,16 +47,16 @@ pub struct CreatePredictionRequest {
 #[derive(Deserialize, Serialize, Debug, Clone, Default, Eq, PartialEq)]
 pub struct Predictor {
     pub user_name: String,
-    pub channel_points_used: i32,
-    pub channel_points_won: i32,
+    pub channel_points_used: i64,
+    pub channel_points_won: i64,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone, Default, Eq, PartialEq)]
 pub struct PredictionOutcome {
     pub id: String,
     pub title: String,
-    pub users: i32,
-    pub channel_points: i32,
+    pub users: i64,
+    pub channel_points: i64,
     pub top_predictors: Option<Vec<Predictor>>,
     pub color: String,
 }
@@ -85,14 +85,14 @@ pub struct EndPredictionRequest {
 pub struct PollChoiceState {
     pub id: String,
     pub title: String,
-    pub votes: i32,
-    pub channel_points_votes: i32,
+    pub votes: i64,
+    pub channel_points_votes: i64,
 }
 
 impl PollChoiceState {
     /// Twitch's `votes` is the combined total (free + channel-point votes), so subtracting
     /// the channel-point votes yields the free "popular" votes.
-    pub fn popular_votes(&self) -> i32 {
+    pub fn popular_votes(&self) -> i64 {
         self.votes - self.channel_points_votes
     }
 }

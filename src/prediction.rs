@@ -287,10 +287,11 @@ impl App {
             );
         } else {
             // list of options with win buttons
-            let options = if let PredictionRun::Live(d) = &self.prediction.run {
+            let options: &[PredictionOutcome] = if let PredictionRun::Live(d) = &self.prediction.run
+            {
                 &d.outcomes
             } else {
-                &vec![]
+                &[]
             };
             for option in options.iter() {
                 let text = Text::new(option.title.clone()).width(Length::Fill);
@@ -436,7 +437,7 @@ fn get_state_view(
                     .outcomes
                     .iter()
                     .map(|o| o.channel_points)
-                    .sum::<i32>();
+                    .sum::<i64>();
                 let ratio = if winner.channel_points == 0 {
                     0f64
                 } else {
@@ -492,8 +493,8 @@ fn get_points_distribution(
         return Text::new("No Prediction Active").into();
     };
     let resolved = state.status == PredictionStatus::Resolved;
-    let total_points = state.outcomes.iter().map(|o| o.channel_points).sum::<i32>();
-    let total_users = state.outcomes.iter().map(|o| o.users).sum::<i32>();
+    let total_points = state.outcomes.iter().map(|o| o.channel_points).sum::<i64>();
+    let total_users = state.outcomes.iter().map(|o| o.users).sum::<i64>();
 
     let mut by_points = state.outcomes.clone();
     by_points.sort_by_key(|o| std::cmp::Reverse(o.channel_points));
@@ -600,7 +601,7 @@ fn get_points_distribution(
     .into()
 }
 
-fn get_percentages(total_points: i32, total_users: i32, o: &PredictionOutcome) -> (f64, f64) {
+fn get_percentages(total_points: i64, total_users: i64, o: &PredictionOutcome) -> (f64, f64) {
     let user_percent = if total_users == 0 {
         0f64
     } else {

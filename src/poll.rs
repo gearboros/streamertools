@@ -483,7 +483,7 @@ fn same_set(a: &[PollChoiceState], b: &[PollChoiceState]) -> bool {
 
 fn winners_by(
     choices: &[PollChoiceState],
-    key: impl Fn(&PollChoiceState) -> i32,
+    key: impl Fn(&PollChoiceState) -> i64,
 ) -> Vec<PollChoiceState> {
     match choices.iter().map(&key).max() {
         Some(max) => choices.iter().filter(|c| key(c) == max).cloned().collect(),
@@ -522,13 +522,13 @@ fn get_votes_result(
     let Some(state) = *state else {
         return Text::new("No Poll Active").into();
     };
-    let total_votes = state.choices.iter().map(|c| c.votes).sum::<i32>();
-    let total_popular_votes = state.choices.iter().map(|c| c.popular_votes()).sum::<i32>();
+    let total_votes = state.choices.iter().map(|c| c.votes).sum::<i64>();
+    let total_popular_votes = state.choices.iter().map(|c| c.popular_votes()).sum::<i64>();
     let total_point_votes = state
         .choices
         .iter()
         .map(|c| c.channel_points_votes)
-        .sum::<i32>();
+        .sum::<i64>();
 
     let mut by_votes = state.choices.clone();
     by_votes.sort_by_key(|c| std::cmp::Reverse(c.votes));
@@ -572,7 +572,7 @@ fn get_votes_result(
             "{} votes, {:.2}% ({} points)",
             o.channel_points_votes,
             point_vote_percent,
-            thousand_separator(o.channel_points_votes * (cost as i32))
+            thousand_separator(o.channel_points_votes * cost as i64)
         )));
     }
 
@@ -585,7 +585,7 @@ fn get_votes_result(
                 total_votes,
                 total_popular_votes,
                 total_point_votes,
-                thousand_separator(total_point_votes * (cost as i32))
+                thousand_separator(total_point_votes * cost as i64)
             )),
             grid,
         ]

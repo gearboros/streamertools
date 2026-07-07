@@ -157,14 +157,14 @@ impl App {
             }
             FallbackConfirmed(confirmed) => {
                 self.confirm = None;
-                if confirmed {
-                    let _ = save_tokens_to_file(
-                        &self.access_token.clone().unwrap(),
-                        &self.refresh_token.clone().unwrap(),
-                        &self.config_path,
-                    );
+                if confirmed
+                    && let (Some(access), Some(refresh)) =
+                        (self.access_token.clone(), self.refresh_token.clone())
+                {
+                    let _ = save_tokens_to_file(&access, &refresh, &self.config_path);
                 }
-                Task::none()
+                // if saving failed, still validate to have usable app
+                Task::done(Message::Auth(ValidateToken))
             }
         }
     }

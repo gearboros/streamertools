@@ -3,7 +3,7 @@ use iced::Task;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::fs;
-use std::path::Path;
+use std::path::{Component, Path};
 
 #[derive(Default, Debug)]
 pub struct ConfigList {
@@ -32,7 +32,7 @@ pub enum ConfigMessage {
 
 pub trait Named {
     fn name(&self) -> &str;
-    fn set_name(&mut self, name: String) -> ();
+    fn set_name(&mut self, name: String);
 }
 
 pub trait ConfigForm {
@@ -86,12 +86,27 @@ pub fn handle_config<T: ConfigForm>(
     }
 }
 
+/// check for valid path name
+fn validate_config_name(name: &str) -> Result<(), String> {
+    if name.trim().is_empty() {
+        return Err("Config name must not be empty.".to_string());
+    }
+    let mut components = Path::new(name).components();
+    match (components.next(), components.next()) {
+        (Some(Component::Normal(_)), None) => Ok(()),
+        _ => Err(format!(
+            "Invalid config name '{name}': use a single name without path separators."
+        )),
+    }
+}
+
 pub fn save_config<T: Serialize>(
     root: &Path,
     subdir: &str,
     name: &str,
     state: &T,
 ) -> Result<(), String> {
+    validate_config_name(name)?;
     let json = serde_json::to_string(state).map_err(|e| e.to_string())?;
     fs::write(root.join(subdir).join(format!("{name}.json")), json).map_err(|e| e.to_string())?;
     Ok(())

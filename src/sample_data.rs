@@ -7,7 +7,7 @@ use crate::twitch_types::{
     PredictionStatus, Predictor,
 };
 
-fn predictor(user_name: &str, channel_points_used: i32, channel_points_won: i32) -> Predictor {
+fn predictor(user_name: &str, channel_points_used: i64, channel_points_won: i64) -> Predictor {
     Predictor {
         user_name: user_name.to_string(),
         channel_points_used,
@@ -15,7 +15,7 @@ fn predictor(user_name: &str, channel_points_used: i32, channel_points_won: i32)
     }
 }
 
-fn choice(id: &str, title: &str, votes: i32, channel_points_votes: i32) -> PollChoiceState {
+fn choice(id: &str, title: &str, votes: i64, channel_points_votes: i64) -> PollChoiceState {
     PollChoiceState {
         id: id.to_string(),
         title: title.to_string(),
@@ -81,10 +81,10 @@ pub fn poll_tie() -> PollStateData {
 fn outcome(
     id: &str,
     title: &str,
-    users: i32,
-    channel_points: i32,
+    users: i64,
+    channel_points: i64,
     color: &str,
-    factor: i32,
+    factor: i64,
 ) -> PredictionOutcome {
     // make sure to have one winner display and the rest losers.
     let won = if id == "1" { 1 } else { 0 };
@@ -142,7 +142,7 @@ pub fn prediction_five() -> CreatePredictionResponseData {
 }
 
 pub fn prediction_ten() -> CreatePredictionResponseData {
-    let outcomes = (1..=10i32)
+    let outcomes = (1..=10i64)
         .map(|i| {
             let color = if i % 2 == 1 { "BLUE" } else { "PINK" };
             outcome(

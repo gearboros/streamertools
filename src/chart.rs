@@ -9,7 +9,7 @@ use iced::{Color, Point, Rectangle, Renderer, Size, Theme};
 
 pub struct BarData {
     pub title: String,
-    pub value: i32,
+    pub value: i64,
     pub color: Color,
 }
 
@@ -34,7 +34,7 @@ impl canvas::Program<Message> for BarChart {
         let mut frame = canvas::Frame::new(renderer, bounds.size());
 
         // .max(1) to avoid dividing by zero
-        let max = self.data.iter().map(|d| d.value).fold(0, i32::max).max(1);
+        let max = self.data.iter().map(|d| d.value).fold(0, i64::max).max(1);
         let bar_space = frame.width() / self.data.len() as f32;
 
         let bar_width = bar_space * 0.75;
