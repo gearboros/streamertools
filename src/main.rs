@@ -74,6 +74,7 @@ struct App {
     // Device code flow UI state
     device_code_info: Option<DeviceCodeInfo>,
     auth_in_progress: bool,
+    refresh_attempted: bool,
     active_tab: TabId,
     err: String,
     confirm: Option<String>,
@@ -150,8 +151,8 @@ impl App {
                     Task::none()
                 }
                 Err(err) => {
-                    error!("{:?}", err);
-                    Task::done(Message::Error(err.to_string()))
+                    error!("Prediction status tick failed: {err}");
+                    Task::none()
                 }
             },
             Message::PollTick => {
@@ -179,8 +180,8 @@ impl App {
                     Task::none()
                 }
                 Err(err) => {
-                    error!("{:?}", err);
-                    Task::done(Message::Error(err.to_string()))
+                    error!("Poll status tick failed: {err}");
+                    Task::none()
                 }
             },
             Message::Keyboard(event) => match event {
@@ -351,8 +352,9 @@ fn main() -> iced::Result {
     let sample = std::env::args().any(|x| x == "--sample");
 
     // create all config dirs
-    let proj = ProjectDirs::from("dev", "gearboros", "streamertools")
-        .expect("Could not determine a config directory for this platform (no valid home directory found)");
+    let proj = ProjectDirs::from("dev", "gearboros", "streamertools").expect(
+        "Could not determine a config directory for this platform (no valid home directory found)",
+    );
     let config_path = proj.config_dir().to_path_buf();
     fs::create_dir_all(config_path.clone()).expect("Could not create config directory");
     fs::create_dir_all(config_path.join("polls")).expect("Could not create polls directory");

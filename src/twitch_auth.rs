@@ -231,21 +231,34 @@ struct ValidationResponse {
     user_id: String,
 }
 
-/// checks if current access token is valid
-/// if invalid tries to refresh
-/// if token can't be refreshed, tells the user to re-authenticate
-pub async fn validate_token(client: &reqwest::Client, token: &str) -> Option<String> {
+/// Checks whether the access token is still valid.
+///
+/// * `Ok(Some(user_id))` — token is valid.
+/// * `Ok(None)` — Twitch confirmed the token is invalid (401); refreshing is safe.
+/// * `Err(_)` — error
+pub async fn validate_token(
+    client: &reqwest::Client,
+    token: &str,
+) -> Result<Option<String>, String> {
     let resp = client
         .get("https://id.twitch.tv/oauth2/validate")
         .header("Authorization", format!("OAuth {}", token))
         .send()
         .await
-        .ok()?;
+        .map_err(|e| format!("Request error: {}", e))?;
 
+    if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
+        return Ok(None);
+    }
     if !resp.status().is_success() {
-        return None;
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        return Err(format!("Token validation failed with {}: {}", status, body));
     }
 
-    let body: ValidationResponse = resp.json().await.ok()?;
-    Some(body.user_id)
+    let body: ValidationResponse = resp
+        .json()
+        .await
+        .map_err(|e| format!("Parse error: {}", e))?;
+    Ok(Some(body.user_id))
 }

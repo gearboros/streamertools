@@ -4,7 +4,11 @@ use crate::twitch_auth::{
 };
 use crate::{App, Message};
 use iced::Task;
-use tracing::info;
+use std::time::Duration;
+use tracing::{info, warn};
+
+/// Delay before re-trying token validation after a transient (network/5xx) failure.
+const VALIDATE_RETRY_DELAY: Duration = Duration::from_secs(10);
 
 #[derive(Debug, Clone)]
 pub enum AuthMessage {
@@ -19,7 +23,7 @@ pub enum AuthMessage {
     ConfirmFallback,
     FallbackConfirmed(bool),
     ValidateToken,
-    TokenValidated(Option<String>),
+    TokenValidated(Result<Option<String>, String>),
     RefreshToken,
 }
 impl App {
@@ -30,6 +34,7 @@ impl App {
                 self.auth_status = "Requesting device code...".to_string();
                 self.auth_in_progress = true;
                 self.device_code_info = None;
+                self.refresh_attempted = false;
 
                 let client = self.client.clone();
                 Task::perform(
@@ -120,25 +125,41 @@ impl App {
                     Task::none()
                 }
             }
-            TokenValidated(valid) => {
-                info!("Token validation result: {:?}", valid);
-                if valid.is_some() {
-                    self.auth_status = "Authenticated".to_string();
-                    self.broadcaster_id = valid;
-                    Task::none()
-                } else {
-                    self.auth_status = "Token Expired, refreshing...".to_string();
-                    if self.refresh_token.is_some() {
-                        info!("Refreshing token...");
-                        Task::done(Message::Auth(RefreshToken))
-                    } else {
-                        info!("No refresh token, starting auth...");
-                        Task::done(Message::Auth(StartAuth))
+            TokenValidated(result) => {
+                info!("Token validation result: {:?}", result);
+                match result {
+                    Ok(Some(user_id)) => {
+                        self.auth_status = "Authenticated".to_string();
+                        self.broadcaster_id = Some(user_id);
+                        self.refresh_attempted = false;
+                        Task::none()
+                    }
+                    // Twitch confirmed the token is invalid (401): refreshing is safe.
+                    Ok(None) => {
+                        if self.refresh_token.is_some() && !self.refresh_attempted {
+                            info!("Token invalid, refreshing...");
+                            self.auth_status = "Token expired, refreshing...".to_string();
+                            Task::done(Message::Auth(RefreshToken))
+                        } else {
+                            // No refresh token, or a freshly refreshed token failed
+                            // validation too — don't loop, start a new device flow.
+                            info!("Token invalid and not refreshable, starting auth...");
+                            Task::done(Message::Auth(StartAuth))
+                        }
+                    }
+                    // Transient failure (network, 5xx): the token may still be valid, retrying
+                    Err(e) => {
+                        warn!("Token validation failed transiently: {e}");
+                        self.auth_status = "Could not reach Twitch, retrying...".to_string();
+                        Task::perform(tokio::time::sleep(VALIDATE_RETRY_DELAY), |_| {
+                            Message::Auth(ValidateToken)
+                        })
                     }
                 }
             }
             RefreshToken => {
                 if let Some(refresh) = &self.refresh_token {
+                    self.refresh_attempted = true;
                     let t = refresh.clone();
                     let client = self.client.clone();
                     Task::perform(
