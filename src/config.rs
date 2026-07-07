@@ -91,6 +91,11 @@ fn validate_config_name(name: &str) -> Result<(), String> {
     if name.trim().is_empty() {
         return Err("Config name must not be empty.".to_string());
     }
+    if name.contains(['/', '\\']) {
+        return Err(format!(
+            "Invalid config name '{name}': use a single name without path separators."
+        ));
+    }
     let mut components = Path::new(name).components();
     match (components.next(), components.next()) {
         (Some(Component::Normal(_)), None) => Ok(()),
@@ -116,4 +121,51 @@ pub fn load_config<T: DeserializeOwned>(root: &Path, subdir: &str, name: &str) -
     fs::read_to_string(root.join(subdir).join(format!("{name}.json")))
         .ok()
         .and_then(|t| serde_json::from_str(&t).ok())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::validate_config_name;
+
+    #[test]
+    fn accepts_plain_names() {
+        for name in ["poll", "my-config_2", "name.with.dots", "übung", "a b c"] {
+            assert!(validate_config_name(name).is_ok(), "should accept {name:?}");
+        }
+    }
+
+    #[test]
+    fn rejects_empty_and_whitespace_only() {
+        for name in ["", " ", "   ", "\t", "\n"] {
+            assert!(
+                validate_config_name(name).is_err(),
+                "should reject {name:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_path_traversal() {
+        for name in ["..", "../evil", "..\\evil", "a/../b", "polls/../../etc"] {
+            assert!(
+                validate_config_name(name).is_err(),
+                "should reject {name:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_separators_and_absolute_paths() {
+        for name in ["a/b", "a\\b", "/etc/passwd", "C:\\Windows", "/", "sub/"] {
+            assert!(
+                validate_config_name(name).is_err(),
+                "should reject {name:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_current_dir() {
+        assert!(validate_config_name(".").is_err());
+    }
 }
