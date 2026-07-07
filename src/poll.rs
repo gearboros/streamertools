@@ -171,6 +171,10 @@ impl App {
                 )
             }
             PollEnded(r) => self.set_poll_run(r),
+            ResetPoll => {
+                self.poll.run = PollRun::Idle;
+                Task::none()
+            }
             Config(c) => handle_config(&self.config_path, c, &mut self.poll),
             LoadSampleData(data) => {
                 self.poll.run = PollRun::Live(data);
@@ -265,10 +269,15 @@ impl App {
             submit_btn = submit_btn.on_press(Message::Poll(PollMessage::Submit));
         }
         let end_btn = button("End Poll").on_press(Message::Poll(PollMessage::EndPoll));
+        let mut reset_btn = button("Reset").style(style::neutral_button);
+        if phase != Some(PollPhase::Active) {
+            reset_btn = reset_btn.on_press(Message::Poll(PollMessage::ResetPoll));
+        }
         let mut btns = row![submit_btn].spacing(SPACING);
         if phase == Some(PollPhase::Active) {
             btns = btns.push(end_btn)
         }
+        btns = btns.push(reset_btn);
 
         let mut dbg_row = column![];
         if self.sample {
@@ -602,6 +611,7 @@ pub enum PollMessage {
     PointCostChange(usize),
     EndPoll,
     PollEnded(Result<PollStateData, String>),
+    ResetPoll,
     Config(ConfigMessage),
     LoadSampleData(PollStateData),
     TabSelected(PollBarTabId),
