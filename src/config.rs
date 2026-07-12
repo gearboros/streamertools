@@ -1,7 +1,7 @@
 use crate::{App, Message};
 use iced::Task;
 use serde::de::DeserializeOwned;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Component, Path};
 
@@ -119,6 +119,25 @@ pub fn save_config<T: Serialize>(
 
 pub fn load_config<T: DeserializeOwned>(root: &Path, subdir: &str, name: &str) -> Option<T> {
     fs::read_to_string(root.join(subdir).join(format!("{name}.json")))
+        .ok()
+        .and_then(|t| serde_json::from_str(&t).ok())
+}
+
+#[derive(Deserialize, Serialize, Default, Debug)]
+pub struct Settings {
+    pub light_mode: bool,
+}
+
+const SETTINGS_NAME: &'static str = "settings.json";
+
+pub fn save_settings(root: &Path, state: &Settings) -> Result<(), String> {
+    let json = serde_json::to_string(state).map_err(|e| e.to_string())?;
+    fs::write(root.join(SETTINGS_NAME), json).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+pub fn load_settings(root: &Path) -> Option<Settings> {
+    fs::read_to_string(root.join(SETTINGS_NAME))
         .ok()
         .and_then(|t| serde_json::from_str(&t).ok())
 }

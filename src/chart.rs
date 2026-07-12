@@ -24,6 +24,8 @@ pub struct BarChart {
 pub struct ChartState {
     cache: canvas::Cache,
     drawn: RefCell<Vec<BarData>>,
+    // need to invalidate chache on theme change
+    drawn_theme: RefCell<Option<Theme>>,
 }
 
 ///
@@ -36,7 +38,7 @@ impl canvas::Program<Message> for BarChart {
         &self,
         state: &Self::State,
         renderer: &Renderer,
-        _theme: &Theme,
+        theme: &Theme,
         bounds: Rectangle,
         _cursor: Cursor,
     ) -> Vec<Geometry<Renderer>> {
@@ -44,10 +46,13 @@ impl canvas::Program<Message> for BarChart {
             return vec![];
         }
 
-        // avoid unnecessary recalculations
-        if *state.drawn.borrow() != self.data {
+        // avoid unnecessary recalculations: redraw when the data or the theme changed
+        // (the theme's text/axis colors are baked into the cached geometry)
+        if *state.drawn.borrow() != self.data || state.drawn_theme.borrow().as_ref() != Some(theme)
+        {
             state.cache.clear();
             state.drawn.borrow_mut().clone_from(&self.data);
+            *state.drawn_theme.borrow_mut() = Some(theme.clone());
         }
 
         let geometry = state.cache.draw(renderer, bounds.size(), |frame| {
@@ -77,7 +82,7 @@ impl canvas::Program<Message> for BarChart {
                 frame.fill_text(canvas::Text {
                     content: thousand_separator(d.value),
                     position: Point::new(x_center, y - 5.0),
-                    color: Color::BLACK,
+                    color: theme.palette().text,
                     size: 16.0.into(),
                     align_x: text::Alignment::Center,
                     align_y: alignment::Vertical::Bottom,
@@ -87,7 +92,7 @@ impl canvas::Program<Message> for BarChart {
                 frame.fill_text(canvas::Text {
                     content: d.title.clone(),
                     position: Point::new(x_center, baseline + 5.0),
-                    color: Color::from_rgb(0.3, 0.3, 0.3),
+                    color: theme.extended_palette().secondary.strong.color,
                     size: 16.0.into(),
                     align_x: text::Alignment::Center,
                     align_y: alignment::Vertical::Top,
@@ -102,7 +107,7 @@ impl canvas::Program<Message> for BarChart {
             frame.stroke(
                 &axis,
                 canvas::Stroke::default()
-                    .with_color(Color::from_rgb(0.6, 0.6, 0.6))
+                    .with_color(theme.extended_palette().secondary.strong.color)
                     .with_width(3.0),
             );
         });

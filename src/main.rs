@@ -13,10 +13,10 @@ mod twitch_auth;
 mod twitch_types;
 mod widgets;
 
-use crate::config::ConfigList;
+use crate::config::{load_settings, save_settings, ConfigList, Settings};
 use crate::poll::{PollRun, PollState, PollTab};
 use crate::prediction::{PredictionRun, PredictionState, PredictionTab};
-use crate::style::{twitch_button, twitch_tab};
+use crate::style::{no_background_button, twitch_button, twitch_tab};
 use crate::twitch_auth::*;
 use auth::{AuthMessage, DeviceCodeInfo};
 use directories::ProjectDirs;
@@ -85,6 +85,7 @@ struct App {
     sample: bool,
     poll: PollTab,
     prediction: PredictionTab,
+    settings: Settings,
 }
 
 #[derive(Debug, Clone)]
@@ -100,6 +101,7 @@ enum Message {
     PollTick,
     PollPolled(Result<PollStateData, String>),
     Keyboard(keyboard::Event),
+    ToggleTheme,
 }
 
 const SPACING: u32 = 10;
@@ -220,6 +222,11 @@ impl App {
                 }
                 _ => Task::none(),
             },
+            Message::ToggleTheme => {
+                self.settings.light_mode = !self.settings.light_mode;
+                let _ = save_settings(&self.config_path, &self.settings);
+                Task::none()
+            }
         }
     }
 
@@ -246,7 +253,15 @@ impl App {
 
         let mut content = column![].spacing(SPACING);
         let auth_text = self.auth_status.clone().trim().to_string();
-        let auth = row![auth_btn, text(auth_text)]
+        let theme_icon = if self.settings.light_mode {
+            "🌙"
+        } else {
+            "☀️"
+        };
+        let theme_btn = button(text(theme_icon).size(30))
+            .on_press(Message::ToggleTheme)
+            .style(no_background_button);
+        let auth = row![auth_btn, text(auth_text), horizontal(), theme_btn]
             .align_y(Vertical::Center)
             .spacing(SPACING);
         content = content.push(auth);
@@ -323,6 +338,14 @@ impl App {
             TabId::Misc => Container::new(row![Text::new("Your ad could be here!")]).into(),
         }
     }
+
+    fn theme(&self) -> Theme {
+        if self.settings.light_mode {
+            Theme::Light
+        } else {
+            Theme::Dark
+        }
+    }
 }
 
 ///
@@ -391,6 +414,7 @@ fn main() -> iced::Result {
         App::view,
     )
     .title("Streamer Tools")
+    .theme(App::theme)
     .font(iced_aw::ICED_AW_FONT_BYTES)
     .subscription(subscription)
     .run()
@@ -400,6 +424,7 @@ impl App {
     fn new(path: &Path, sample: bool) -> (Self, Task<Message>) {
         let polls = Self::load_files(path.join("polls")).unwrap_or_default();
         let preds = Self::load_files(path.join("predictions")).unwrap_or_default();
+        let settings = load_settings(path).unwrap_or_default();
 
         let poll = PollTab {
             configs: ConfigList::with_list(polls),
@@ -445,6 +470,7 @@ impl App {
                 prediction,
                 config_path,
                 sample,
+                settings,
                 ..App::default()
             };
             let task = Task::done(Message::Auth(AuthMessage::ValidateToken));
@@ -459,6 +485,7 @@ impl App {
                 prediction,
                 config_path,
                 sample,
+                settings,
                 ..App::default()
             },
             Task::none(),

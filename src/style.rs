@@ -28,16 +28,24 @@ fn darken_by_factor(color: Color, factor: f32) -> Color {
     }
 }
 
-pub fn neutral_button(_theme: &Theme, status: button::Status) -> Style {
+pub fn no_background_button(theme: &Theme, _status: button::Status) -> Style {
+    Style {
+        background: None,
+        text_color: theme.palette().text,
+        ..Style::default()
+    }
+}
+
+pub fn neutral_button(theme: &Theme, status: button::Status) -> Style {
+    let secondary = theme.extended_palette().secondary;
     let background = match status {
-        button::Status::Hovered => Color::from_rgb8(0x9E, 0x9E, 0x9E),
-        button::Status::Pressed => Color::from_rgb8(0x75, 0x75, 0x75),
-        button::Status::Disabled => Color::from_rgb8(0xBD, 0xBD, 0xBD),
-        button::Status::Active => Color::from_rgb8(0x88, 0x88, 0x88),
+        button::Status::Hovered | button::Status::Pressed => secondary.strong.color,
+        button::Status::Disabled => secondary.weak.color,
+        button::Status::Active => secondary.base.color,
     };
     Style {
         background: Some(background.into()),
-        text_color: Color::WHITE,
+        text_color: secondary.base.text,
         ..Style::default()
     }
 }
@@ -61,16 +69,17 @@ pub fn dbg_button(_theme: &Theme, status: button::Status) -> Style {
     }
 }
 
-pub fn red_button(_theme: &Theme, status: button::Status) -> Style {
+pub fn red_button(theme: &Theme, status: button::Status) -> Style {
+    let danger = theme.extended_palette().danger;
     let background = match status {
-        button::Status::Hovered => Color::from_rgb8(0xE5, 0x39, 0x35),
-        button::Status::Pressed => Color::from_rgb8(0xB7, 0x1C, 0x1C),
-        button::Status::Disabled => Color::from_rgb8(0xE9, 0x9A, 0x9A),
-        button::Status::Active => Color::from_rgb8(0xD3, 0x2F, 0x2F),
+        button::Status::Hovered => danger.strong.color,
+        button::Status::Pressed => slightly_darken(danger.base.color),
+        button::Status::Disabled => danger.weak.color,
+        button::Status::Active => danger.base.color,
     };
     Style {
         background: Some(background.into()),
-        text_color: Color::WHITE,
+        text_color: danger.base.text,
         ..Style::default()
     }
 }
@@ -204,7 +213,7 @@ pub fn color_button(base_color: Color, status: button::Status, is_active: bool) 
     let background = match status {
         button::Status::Hovered => base_color,
         button::Status::Pressed => base_color,
-        button::Status::Disabled => Color::BLACK,
+        button::Status::Disabled => darken_by_factor(base_color, 0.6),
         button::Status::Active => {
             if is_active {
                 base_color
