@@ -40,11 +40,15 @@ on "real" big polls/predictions.
 
 Ctrl + 1/2/3 selects the tabs
 
+## Theming
+
+Application lets the user select which of Iced Themes to use as Light/Dark theme and quickly switch between Light and
+Dark!
+![theming](screenshots/theming.png)
+
 ## Potential Future improvements
 
-* Styling is very barebones, no dark mode exists
 * More testing
-* Actual features for the misc tab
 * As mentioned above, I'd like to add top voters for polls
 
 ## Screenshots

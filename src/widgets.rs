@@ -113,6 +113,14 @@ pub fn config_bar(
         fav_btn = fav_btn.on_press(msg);
     }
 
+    let fav_tip = "Favorite config gets auto-loaded at startup.";
+    let fav_elem: Element<'_, Message> = tooltip(
+        fav_btn,
+        container(text(fav_tip)).padding(10).style(container::dark),
+        tooltip::Position::Bottom,
+    )
+    .into();
+
     let mut del_btn = button(text("✖").size(24).center())
         .padding([0, 4])
         .style(style::neutral_button);
@@ -120,7 +128,15 @@ pub fn config_bar(
         del_btn = del_btn.on_press(on_delete(name.to_string()));
     }
 
-    row![dropdown, name_input, new_btn, save_elem, fav_btn, del_btn]
+    let del_tip = "Delete a loaded config.";
+    let del_elem: Element<'_, Message> = tooltip(
+        del_btn,
+        container(text(del_tip)).padding(10).style(container::dark),
+        tooltip::Position::Bottom,
+    )
+    .into();
+
+    row![dropdown, name_input, new_btn, save_elem, fav_elem, del_elem]
         .spacing(SPACING)
         .into()
 }
