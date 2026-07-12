@@ -66,6 +66,14 @@ impl TabId {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct Confirm {
+    message: String,
+    on_yes: Box<Message>,
+    // None just closes the modal
+    on_no: Option<Box<Message>>,
+}
+
 #[derive(Default, Debug)]
 struct App {
     client: reqwest::Client,
@@ -79,7 +87,7 @@ struct App {
     refresh_attempted: bool,
     active_tab: TabId,
     err: String,
-    confirm: Option<String>,
+    confirm: Option<Confirm>,
     config_path: PathBuf,
     // shows sample buttons for testing result display, disable polling
     sample: bool,
@@ -96,6 +104,11 @@ enum Message {
     Prediction(PredictionMessage),
     Error(String),
     ClearError,
+    RequestConfirm {
+        message: String,
+        on_yes: Box<Message>,
+    },
+    Confirmed(bool),
     PredictionTick,
     PredictionPolled(Result<CreatePredictionResponseData, String>),
     PollTick,
@@ -126,6 +139,28 @@ impl App {
             Message::ClearError => {
                 self.err = String::new();
                 Task::none()
+            }
+            Message::RequestConfirm { message, on_yes } => {
+                self.confirm = Some(Confirm {
+                    message,
+                    on_yes,
+                    on_no: None,
+                });
+                Task::none()
+            }
+            Message::Confirmed(yes) => {
+                let Some(c) = self.confirm.take() else {
+                    return Task::none();
+                };
+                let next = if yes {
+                    Some(*c.on_yes)
+                } else {
+                    c.on_no.map(|b| *b)
+                };
+                match next {
+                    Some(m) => Task::done(m),
+                    None => Task::none(),
+                }
             }
             Message::PredictionTick => {
                 let PredictionRun::Live(d) = &self.prediction.run else {
@@ -298,18 +333,16 @@ impl App {
             .style(container::rounded_box);
 
             widgets::modal(content.padding(20), error, Message::ClearError)
-        } else if self.confirm.is_some() {
+        } else if let Some(c) = &self.confirm {
             let confirm = container(
                 column![
                     text("Confirm").size(24),
                     column![
-                        text(self.confirm.clone().unwrap().clone()),
+                        text(c.message.clone()),
                         row![
                             horizontal(),
-                            button(text("No"))
-                                .on_press(Message::Auth(AuthMessage::FallbackConfirmed(false))),
-                            button(text("Yes"))
-                                .on_press(Message::Auth(AuthMessage::FallbackConfirmed(true))),
+                            button(text("No")).on_press(Message::Confirmed(false)),
+                            button(text("Yes")).on_press(Message::Confirmed(true)),
                         ]
                         .spacing(SPACING)
                     ]
@@ -321,11 +354,7 @@ impl App {
             .padding(10)
             .style(container::rounded_box);
 
-            widgets::modal(
-                content.padding(20),
-                confirm,
-                Message::Auth(AuthMessage::FallbackConfirmed(false)),
-            )
+            widgets::modal(content.padding(20), confirm, Message::Confirmed(false))
         } else {
             container(content.padding(20)).into()
         }

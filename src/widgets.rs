@@ -75,6 +75,7 @@ pub fn config_bar(
     on_save: Message,
     is_favorite: bool,
     on_toggle_favorite: Option<Message>,
+    on_delete: impl Fn(String) -> Message + 'static,
 ) -> Element<'static, Message> {
     let dropdown: PickList<'_, String, Vec<String>, String, Message> =
         pick_list(configs.items.clone(), configs.selected.clone(), on_select)
@@ -112,7 +113,14 @@ pub fn config_bar(
         fav_btn = fav_btn.on_press(msg);
     }
 
-    row![dropdown, name_input, new_btn, save_elem, fav_btn]
+    let mut del_btn = button(text("✖").size(24).center())
+        .padding([0, 4])
+        .style(style::neutral_button);
+    if configs.loaded {
+        del_btn = del_btn.on_press(on_delete(name.to_string()));
+    }
+
+    row![dropdown, name_input, new_btn, save_elem, fav_btn, del_btn]
         .spacing(SPACING)
         .into()
 }

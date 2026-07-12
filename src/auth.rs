@@ -2,7 +2,7 @@ use crate::twitch_auth::{
     poll_for_tokens, refresh_access_token, request_device_code, save_tokens, save_tokens_to_file,
     validate_token,
 };
-use crate::{App, Message};
+use crate::{App, Confirm, Message};
 use iced::Task;
 use std::time::Duration;
 use tracing::{info, warn};
@@ -171,13 +171,16 @@ impl App {
                 }
             }
             ConfirmFallback => {
-                self.confirm = Some(String::from(
-                    "Could not save tokens to the Operating System's keystore.\nDo you want the tokens saved to a file? This is not recommended since it might leak the tokens to other processes.\nIf \"No\", you'll have to re-authenticate every time you restart the app.",
-                ));
+                self.confirm = Some(Confirm {
+                    message: String::from(
+                        "Could not save tokens to the Operating System's keystore.\nDo you want the tokens saved to a file? This is not recommended since it might leak the tokens to other processes.\nIf \"No\", you'll have to re-authenticate every time you restart the app.",
+                    ),
+                    on_yes: Box::new(Message::Auth(AuthMessage::FallbackConfirmed(true))),
+                    on_no: Some(Box::new(Message::Auth(AuthMessage::FallbackConfirmed(false)))),
+                });
                 Task::none()
             }
             FallbackConfirmed(confirmed) => {
-                self.confirm = None;
                 if confirmed
                     && let (Some(access), Some(refresh)) =
                         (self.access_token.clone(), self.refresh_token.clone())

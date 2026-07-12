@@ -231,6 +231,12 @@ impl App {
             Message::Poll(PollMessage::Config(ConfigMessage::Save)),
             is_favorite,
             on_toggle_favorite,
+            |t| Message::RequestConfirm {
+                message: format!("Delete config \"{t}\"?"),
+                on_yes: Box::new(Message::Poll(PollMessage::Config(
+                    ConfigMessage::ConfirmDelete(t),
+                ))),
+            },
         );
 
         let title_input = text_input("Poll title", &state.title).on_input(|r| {

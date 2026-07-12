@@ -30,6 +30,7 @@ pub enum ConfigMessage {
     ConfigSelected(String),
     Favorite(String),
     Unfavorite,
+    ConfirmDelete(String),
 }
 
 pub trait Named {
@@ -101,6 +102,19 @@ pub fn handle_config<T: ConfigForm>(
             }
             Task::none()
         }
+        ConfigMessage::ConfirmDelete(name) => {
+            if let Err(e) = delete_config(config_path, T::SUBDIR, &name) {
+                return Task::done(Message::Error(e));
+            }
+            let configs = tab.configs_mut();
+            configs.items = match App::load_files(config_path.join(T::SUBDIR)) {
+                Ok(files) => files,
+                Err(e) => return Task::done(Message::Error(e.to_string())),
+            };
+            configs.loaded = false;
+            configs.selected = None;
+            Task::none()
+        }
     }
 }
 
@@ -139,6 +153,10 @@ pub fn load_config<T: DeserializeOwned>(root: &Path, subdir: &str, name: &str) -
     fs::read_to_string(root.join(subdir).join(format!("{name}.json")))
         .ok()
         .and_then(|t| serde_json::from_str(&t).ok())
+}
+
+pub fn delete_config(root: &Path, subdir: &str, name: &str) -> Result<(), String> {
+    fs::remove_file(root.join(subdir).join(format!("{name}.json"))).map_err(|e| e.to_string())
 }
 
 #[derive(Deserialize, Serialize, Default, Debug)]

@@ -253,9 +253,12 @@ impl App {
                 self.prediction.active_tab = idx;
                 Task::none()
             }
-            Config(c) => {
-                handle_config(&self.config_path, c, &mut self.prediction, &mut self.settings)
-            }
+            Config(c) => handle_config(
+                &self.config_path,
+                c,
+                &mut self.prediction,
+                &mut self.settings,
+            ),
             BaseFormChange(b) => handle_base_changes(&mut self.prediction.form, b),
         }
     }
@@ -320,6 +323,12 @@ impl App {
             Message::Prediction(PredictionMessage::Config(ConfigMessage::Save)),
             is_favorite,
             on_toggle_favorite,
+            |t| Message::RequestConfirm {
+                message: format!("Delete config \"{t}\"?"),
+                on_yes: Box::new(Message::Prediction(PredictionMessage::Config(
+                    ConfigMessage::ConfirmDelete(t),
+                ))),
+            },
         );
 
         let title_input = text_input("Prediction title", &state.title).on_input(|r| {
