@@ -7,6 +7,7 @@ mod config;
 mod poll;
 mod prediction;
 mod sample_data;
+mod settings;
 mod style;
 mod twitch_api;
 mod twitch_auth;
@@ -16,6 +17,7 @@ mod widgets;
 use crate::config::{load_config, load_settings, save_settings, ConfigList, Settings};
 use crate::poll::{PollRun, PollState, PollTab};
 use crate::prediction::{PredictionRun, PredictionState, PredictionTab};
+use crate::settings::{resolve_theme, SettingsMessage};
 use crate::style::{no_background_button, twitch_button, twitch_tab};
 use crate::twitch_auth::*;
 use auth::{AuthMessage, DeviceCodeInfo};
@@ -41,7 +43,7 @@ pub const CLIENT_ID: &str = "9w729lqufngx4sztgex20eztz7o879";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 enum TabId {
-    Misc,
+    Settings,
     Poll,
     #[default]
     Prediction,
@@ -50,7 +52,7 @@ enum TabId {
 impl TabId {
     pub fn idx(self) -> usize {
         match self {
-            TabId::Misc => 2,
+            TabId::Settings => 2,
             TabId::Poll => 1,
             TabId::Prediction => 0,
         }
@@ -60,7 +62,7 @@ impl TabId {
         match idx {
             0 => TabId::Prediction,
             1 => TabId::Poll,
-            2 => TabId::Misc,
+            2 => TabId::Settings,
             _ => TabId::Prediction,
         }
     }
@@ -115,6 +117,7 @@ enum Message {
     PollPolled(Result<PollStateData, String>),
     Keyboard(keyboard::Event),
     ToggleTheme,
+    Settings(SettingsMessage),
 }
 
 const SPACING: u32 = 10;
@@ -246,7 +249,7 @@ impl App {
                         let tab = match c.as_str() {
                             "1" => Some(TabId::Prediction),
                             "2" => Some(TabId::Poll),
-                            "3" => Some(TabId::Misc),
+                            "3" => Some(TabId::Settings),
                             _ => None,
                         };
                         if let Some(tab) = tab {
@@ -262,6 +265,7 @@ impl App {
                 let _ = save_settings(&self.config_path, &self.settings);
                 Task::none()
             }
+            Message::Settings(settings_message) => self.handle_settings(settings_message),
         }
     }
 
@@ -272,7 +276,7 @@ impl App {
                 TabLabel::Text("Prediction 🎲".into()),
             )
             .push(TabId::Poll.idx(), TabLabel::Text("Poll 📊".into()))
-            .push(TabId::Misc.idx(), TabLabel::Text("Misc".into()))
+            .push(TabId::Settings.idx(), TabLabel::Text("Settings".into()))
             .set_active_tab(&self.active_tab.idx());
 
         tab_bar = tab_bar.style(twitch_tab);
@@ -364,15 +368,15 @@ impl App {
         match &self.active_tab {
             TabId::Prediction => self.get_prediction_tab_content(),
             TabId::Poll => self.get_poll_tab_content(),
-            TabId::Misc => Container::new(row![Text::new("Your ad could be here!")]).into(),
+            TabId::Settings => self.get_settings_tab_content(),
         }
     }
 
     fn theme(&self) -> Theme {
         if self.settings.light_mode {
-            Theme::Light
+            resolve_theme(&self.settings.light_theme, Theme::Light)
         } else {
-            Theme::Dark
+            resolve_theme(&self.settings.dark_theme, Theme::Dark)
         }
     }
 }
@@ -504,6 +508,14 @@ impl App {
 
         // Trying to reuse auth tokens from keyring/file
         let config_path = path.to_path_buf();
+        let active_tab = match settings.default_tab.as_deref() {
+            None => TabId::Prediction,
+            Some(tab) => match &tab {
+                &"Poll" => TabId::Poll,
+                &"Prediction" => TabId::Prediction,
+                _ => TabId::Prediction,
+            },
+        };
         if let Some((access, refresh)) = load_tokens(&config_path) {
             info!("Loaded tokens, validating...");
             let app = Self {
@@ -516,6 +528,7 @@ impl App {
                 config_path,
                 sample,
                 settings,
+                active_tab,
                 ..App::default()
             };
             let task = Task::done(Message::Auth(AuthMessage::ValidateToken));
@@ -530,6 +543,7 @@ impl App {
                 prediction,
                 config_path,
                 sample,
+                active_tab,
                 settings,
                 ..App::default()
             },

@@ -164,6 +164,9 @@ pub struct Settings {
     pub light_mode: bool,
     pub fav_poll: Option<String>,
     pub fav_prediction: Option<String>,
+    pub default_tab: Option<String>,
+    pub light_theme: Option<String>,
+    pub dark_theme: Option<String>,
 }
 
 const SETTINGS_NAME: &'static str = "settings.json";
