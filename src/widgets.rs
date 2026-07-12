@@ -73,6 +73,8 @@ pub fn config_bar(
     on_name_change: impl Fn(String) -> Message + 'static,
     on_new: Message,
     on_save: Message,
+    is_favorite: bool,
+    on_toggle_favorite: Option<Message>,
 ) -> Element<'static, Message> {
     let dropdown: PickList<'_, String, Vec<String>, String, Message> =
         pick_list(configs.items.clone(), configs.selected.clone(), on_select)
@@ -102,7 +104,15 @@ pub fn config_bar(
         .into()
     };
 
-    row![dropdown, name_input, new_btn, save_elem]
+    let star = if is_favorite { "★" } else { "☆" };
+    let mut fav_btn = button(text(star).size(24).center())
+        .padding([0, 4])
+        .style(style::neutral_button);
+    if let Some(msg) = on_toggle_favorite {
+        fav_btn = fav_btn.on_press(msg);
+    }
+
+    row![dropdown, name_input, new_btn, save_elem, fav_btn]
         .spacing(SPACING)
         .into()
 }

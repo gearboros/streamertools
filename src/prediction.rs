@@ -1,6 +1,6 @@
 use crate::base_form::{handle_base_changes, BaseFormMessage, EditableForm};
 use crate::chart::{BarChart, BarData};
-use crate::config::{handle_config, ConfigForm, ConfigList, ConfigMessage, Named};
+use crate::config::{handle_config, ConfigForm, ConfigList, ConfigMessage, Named, Settings};
 use crate::sample_data::{prediction_five, prediction_ongoing, prediction_ten, prediction_two};
 use crate::style::{bold_text, get_base_color, thousand_separator};
 use crate::twitch_api::{
@@ -43,6 +43,10 @@ impl ConfigForm for PredictionTab {
 
     fn configs_mut(&mut self) -> &mut ConfigList {
         &mut self.configs
+    }
+
+    fn favorite(settings: &mut Settings) -> &mut Option<String> {
+        &mut settings.fav_prediction
     }
 }
 
@@ -249,7 +253,9 @@ impl App {
                 self.prediction.active_tab = idx;
                 Task::none()
             }
-            Config(c) => handle_config(&self.config_path, c, &mut self.prediction),
+            Config(c) => {
+                handle_config(&self.config_path, c, &mut self.prediction, &mut self.settings)
+            }
             BaseFormChange(b) => handle_base_changes(&mut self.prediction.form, b),
         }
     }
@@ -294,6 +300,17 @@ impl App {
             None
         };
 
+        let selected = self.prediction.configs.selected.clone();
+        let is_favorite = selected.is_some() && selected == self.settings.fav_prediction;
+        let on_toggle_favorite = selected.map(|name| {
+            let cfg = if is_favorite {
+                ConfigMessage::Unfavorite
+            } else {
+                ConfigMessage::Favorite(name)
+            };
+            Message::Prediction(PredictionMessage::Config(cfg))
+        });
+
         let config_row = config_bar(
             &self.prediction.configs,
             &state.name,
@@ -301,6 +318,8 @@ impl App {
             |n| Message::Prediction(PredictionMessage::Config(ConfigMessage::NameChanged(n))),
             Message::Prediction(PredictionMessage::Config(ConfigMessage::New)),
             Message::Prediction(PredictionMessage::Config(ConfigMessage::Save)),
+            is_favorite,
+            on_toggle_favorite,
         );
 
         let title_input = text_input("Prediction title", &state.title).on_input(|r| {

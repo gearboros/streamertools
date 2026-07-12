@@ -1,6 +1,6 @@
 use crate::base_form::{handle_base_changes, BaseFormMessage, EditableForm};
 use crate::chart::{BarChart, BarData};
-use crate::config::{handle_config, ConfigForm, ConfigList, ConfigMessage, Named};
+use crate::config::{handle_config, ConfigForm, ConfigList, ConfigMessage, Named, Settings};
 use crate::sample_data::{
     poll_points_winner, poll_popular_winner, poll_tie, poll_total_winner, running_poll,
 };
@@ -69,6 +69,10 @@ impl ConfigForm for PollTab {
 
     fn configs_mut(&mut self) -> &mut ConfigList {
         &mut self.configs
+    }
+
+    fn favorite(settings: &mut Settings) -> &mut Option<String> {
+        &mut settings.fav_poll
     }
 }
 
@@ -175,7 +179,7 @@ impl App {
                 self.poll.run = PollRun::Idle;
                 Task::none()
             }
-            Config(c) => handle_config(&self.config_path, c, &mut self.poll),
+            Config(c) => handle_config(&self.config_path, c, &mut self.poll, &mut self.settings),
             LoadSampleData(data) => {
                 self.poll.run = PollRun::Live(data);
                 Task::none()
@@ -207,6 +211,17 @@ impl App {
             None
         };
 
+        let selected = self.poll.configs.selected.clone();
+        let is_favorite = selected.is_some() && selected == self.settings.fav_poll;
+        let on_toggle_favorite = selected.map(|name| {
+            let cfg = if is_favorite {
+                ConfigMessage::Unfavorite
+            } else {
+                ConfigMessage::Favorite(name)
+            };
+            Message::Poll(PollMessage::Config(cfg))
+        });
+
         let save_row = config_bar(
             &self.poll.configs,
             &state.name,
@@ -214,6 +229,8 @@ impl App {
             |n| Message::Poll(PollMessage::Config(ConfigMessage::NameChanged(n))),
             Message::Poll(PollMessage::Config(ConfigMessage::New)),
             Message::Poll(PollMessage::Config(ConfigMessage::Save)),
+            is_favorite,
+            on_toggle_favorite,
         );
 
         let title_input = text_input("Poll title", &state.title).on_input(|r| {

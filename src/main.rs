@@ -13,7 +13,7 @@ mod twitch_auth;
 mod twitch_types;
 mod widgets;
 
-use crate::config::{load_settings, save_settings, ConfigList, Settings};
+use crate::config::{load_config, load_settings, save_settings, ConfigList, Settings};
 use crate::poll::{PollRun, PollState, PollTab};
 use crate::prediction::{PredictionRun, PredictionState, PredictionTab};
 use crate::style::{no_background_button, twitch_button, twitch_tab};
@@ -426,7 +426,7 @@ impl App {
         let preds = Self::load_files(path.join("predictions")).unwrap_or_default();
         let settings = load_settings(path).unwrap_or_default();
 
-        let poll = PollTab {
+        let mut poll = PollTab {
             configs: ConfigList::with_list(polls),
             form: PollState {
                 options: vec![String::new(), String::new()],
@@ -437,7 +437,7 @@ impl App {
             ..PollTab::default()
         };
 
-        let prediction = PredictionTab {
+        let mut prediction = PredictionTab {
             configs: ConfigList::with_list(preds),
             form: PredictionState {
                 options: vec![String::new(), String::new()],
@@ -446,6 +446,22 @@ impl App {
             },
             ..PredictionTab::default()
         };
+
+        // Load favorite configs
+        if let Some(name) = &settings.fav_poll {
+            if let Some(form) = load_config::<PollState>(path, "polls", name) {
+                poll.form = form;
+                poll.configs.selected = Some(name.clone());
+                poll.configs.loaded = true;
+            }
+        }
+        if let Some(name) = &settings.fav_prediction {
+            if let Some(form) = load_config::<PredictionState>(path, "predictions", name) {
+                prediction.form = form;
+                prediction.configs.selected = Some(name.clone());
+                prediction.configs.loaded = true;
+            }
+        }
 
         // shared client with basic timeout values
         let client = reqwest::Client::builder()

@@ -28,6 +28,8 @@ pub enum ConfigMessage {
     New,
     NameChanged(String),
     ConfigSelected(String),
+    Favorite(String),
+    Unfavorite,
 }
 
 pub trait Named {
@@ -41,12 +43,14 @@ pub trait ConfigForm {
     fn form(&self) -> &Self::Form;
     fn form_mut(&mut self) -> &mut Self::Form;
     fn configs_mut(&mut self) -> &mut ConfigList;
+    fn favorite(settings: &mut Settings) -> &mut Option<String>;
 }
 
 pub fn handle_config<T: ConfigForm>(
     config_path: &Path,
     message: ConfigMessage,
     tab: &mut T,
+    settings: &mut Settings,
 ) -> Task<Message> {
     match message {
         ConfigMessage::Save => {
@@ -80,6 +84,20 @@ pub fn handle_config<T: ConfigForm>(
                 let configs = tab.configs_mut();
                 configs.selected = Some(name);
                 configs.loaded = true;
+            }
+            Task::none()
+        }
+        ConfigMessage::Favorite(name) => {
+            *T::favorite(settings) = Some(name);
+            if let Err(e) = save_settings(config_path, settings) {
+                return Task::done(Message::Error(e));
+            }
+            Task::none()
+        }
+        ConfigMessage::Unfavorite => {
+            *T::favorite(settings) = None;
+            if let Err(e) = save_settings(config_path, settings) {
+                return Task::done(Message::Error(e));
             }
             Task::none()
         }
@@ -126,6 +144,8 @@ pub fn load_config<T: DeserializeOwned>(root: &Path, subdir: &str, name: &str) -
 #[derive(Deserialize, Serialize, Default, Debug)]
 pub struct Settings {
     pub light_mode: bool,
+    pub fav_poll: Option<String>,
+    pub fav_prediction: Option<String>,
 }
 
 const SETTINGS_NAME: &'static str = "settings.json";
