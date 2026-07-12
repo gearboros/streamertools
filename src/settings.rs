@@ -1,10 +1,10 @@
-use crate::config::{Settings, save_settings};
+use crate::config::{save_settings, Settings};
 use crate::settings::SettingsMessage::*;
 use crate::{App, Message, SPACING};
 use iced::alignment::Vertical;
-use iced::widget::{Container, PickList, Text, column, pick_list, row};
+use iced::widget::{column, pick_list, row, Container, PickList, Text};
 use iced::{Element, Length, Renderer, Task, Theme};
-use std::path::PathBuf;
+use std::path::Path;
 use std::string::ToString;
 
 #[derive(Debug, Clone)]
@@ -101,7 +101,7 @@ impl App {
     }
 }
 
-pub fn try_save_settings(path_buf: &PathBuf, settings: &Settings) -> Task<Message> {
+pub fn try_save_settings(path_buf: &Path, settings: &Settings) -> Task<Message> {
     match save_settings(path_buf, settings) {
         Ok(_) => Task::none(),
         Err(err) => Task::done(Message::Error(err)),

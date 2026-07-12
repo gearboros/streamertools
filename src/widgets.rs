@@ -1,4 +1,4 @@
-use crate::config::ConfigList;
+use crate::config::{ConfigList, ConfigMessage};
 use crate::{style, Message, SPACING};
 use iced::widget::{
     button, center, column, container, pick_list, row, stack, text, text_input, tooltip, Button,
@@ -69,23 +69,24 @@ where
 pub fn config_bar(
     configs: &ConfigList,
     name: &str,
-    on_select: impl Fn(String) -> Message + 'static,
-    on_name_change: impl Fn(String) -> Message + 'static,
-    on_new: Message,
-    on_save: Message,
     is_favorite: bool,
-    on_toggle_favorite: Option<Message>,
-    on_delete: impl Fn(String) -> Message + 'static,
+    on_config_message: impl Fn(ConfigMessage) -> Message + Clone + 'static,
 ) -> Element<'static, Message> {
+    let select_wrap = on_config_message.clone();
     let dropdown: PickList<'_, String, Vec<String>, String, Message> =
-        pick_list(configs.items.clone(), configs.selected.clone(), on_select)
-            .placeholder("Select a config to load");
+        pick_list(configs.items.clone(), configs.selected.clone(), move |t| {
+            select_wrap(ConfigMessage::ConfigSelected(t))
+        })
+        .placeholder("Select a config to load");
 
     let mut name_input: TextInput<_> = text_input("Config Name", name);
     if !configs.loaded {
-        name_input = name_input.on_input(on_name_change);
+        let name_wrap = on_config_message.clone();
+        name_input = name_input.on_input(move |n| name_wrap(ConfigMessage::NameChanged(n)));
     }
-    let new_btn: Button<_> = button("New").on_press(on_new).style(style::neutral_button);
+    let new_btn: Button<_> = button("New")
+        .on_press(on_config_message(ConfigMessage::New))
+        .style(style::neutral_button);
 
     // Overwrite guard: block Save when a config of this name already exists, unless it was
     // explicitly loaded first (so editing-then-saving a loaded config is still allowed).
@@ -93,7 +94,9 @@ pub fn config_bar(
 
     let save_btn = button("Save").style(style::neutral_button);
     let save_elem: Element<'_, Message> = if can_save {
-        save_btn.on_press(on_save).into()
+        save_btn
+            .on_press(on_config_message(ConfigMessage::Save))
+            .into()
     } else {
         tooltip(
             save_btn,
@@ -109,8 +112,13 @@ pub fn config_bar(
     let mut fav_btn = button(text(star).size(24).center())
         .padding([0, 4])
         .style(style::neutral_button);
-    if let Some(msg) = on_toggle_favorite {
-        fav_btn = fav_btn.on_press(msg);
+    if let Some(selected) = configs.selected.clone() {
+        let msg = if is_favorite {
+            ConfigMessage::Unfavorite
+        } else {
+            ConfigMessage::Favorite(selected)
+        };
+        fav_btn = fav_btn.on_press(on_config_message(msg));
     }
 
     let fav_tip = "Favorite config gets auto-loaded at startup.";
@@ -125,7 +133,12 @@ pub fn config_bar(
         .padding([0, 4])
         .style(style::neutral_button);
     if configs.loaded {
-        del_btn = del_btn.on_press(on_delete(name.to_string()));
+        del_btn = del_btn.on_press(Message::RequestConfirm {
+            message: format!("Delete config \"{name}\"?"),
+            on_yes: Box::new(on_config_message(ConfigMessage::ConfirmDelete(
+                name.to_string(),
+            ))),
+        });
     }
 
     let del_tip = "Delete a loaded config.";

@@ -213,30 +213,12 @@ impl App {
 
         let selected = self.poll.configs.selected.clone();
         let is_favorite = selected.is_some() && selected == self.settings.fav_poll;
-        let on_toggle_favorite = selected.map(|name| {
-            let cfg = if is_favorite {
-                ConfigMessage::Unfavorite
-            } else {
-                ConfigMessage::Favorite(name)
-            };
-            Message::Poll(PollMessage::Config(cfg))
-        });
 
         let save_row = config_bar(
             &self.poll.configs,
             &state.name,
-            |t| Message::Poll(PollMessage::Config(ConfigMessage::ConfigSelected(t))),
-            |n| Message::Poll(PollMessage::Config(ConfigMessage::NameChanged(n))),
-            Message::Poll(PollMessage::Config(ConfigMessage::New)),
-            Message::Poll(PollMessage::Config(ConfigMessage::Save)),
             is_favorite,
-            on_toggle_favorite,
-            |t| Message::RequestConfirm {
-                message: format!("Delete config \"{t}\"?"),
-                on_yes: Box::new(Message::Poll(PollMessage::Config(
-                    ConfigMessage::ConfirmDelete(t),
-                ))),
-            },
+            |cfg| Message::Poll(PollMessage::Config(cfg)),
         );
 
         let title_input = text_input("Poll title", &state.title).on_input(|r| {

@@ -305,30 +305,12 @@ impl App {
 
         let selected = self.prediction.configs.selected.clone();
         let is_favorite = selected.is_some() && selected == self.settings.fav_prediction;
-        let on_toggle_favorite = selected.map(|name| {
-            let cfg = if is_favorite {
-                ConfigMessage::Unfavorite
-            } else {
-                ConfigMessage::Favorite(name)
-            };
-            Message::Prediction(PredictionMessage::Config(cfg))
-        });
 
         let config_row = config_bar(
             &self.prediction.configs,
             &state.name,
-            |t| Message::Prediction(PredictionMessage::Config(ConfigMessage::ConfigSelected(t))),
-            |n| Message::Prediction(PredictionMessage::Config(ConfigMessage::NameChanged(n))),
-            Message::Prediction(PredictionMessage::Config(ConfigMessage::New)),
-            Message::Prediction(PredictionMessage::Config(ConfigMessage::Save)),
             is_favorite,
-            on_toggle_favorite,
-            |t| Message::RequestConfirm {
-                message: format!("Delete config \"{t}\"?"),
-                on_yes: Box::new(Message::Prediction(PredictionMessage::Config(
-                    ConfigMessage::ConfirmDelete(t),
-                ))),
-            },
+            |cfg| Message::Prediction(PredictionMessage::Config(cfg)),
         );
 
         let title_input = text_input("Prediction title", &state.title).on_input(|r| {

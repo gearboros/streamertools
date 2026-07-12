@@ -169,7 +169,7 @@ pub struct Settings {
     pub dark_theme: Option<String>,
 }
 
-const SETTINGS_NAME: &'static str = "settings.json";
+const SETTINGS_NAME: &str = "settings.json";
 
 pub fn save_settings(root: &Path, state: &Settings) -> Result<(), String> {
     let json = serde_json::to_string(state).map_err(|e| e.to_string())?;

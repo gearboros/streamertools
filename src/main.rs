@@ -25,7 +25,7 @@ use directories::ProjectDirs;
 use iced::alignment::Vertical;
 use iced::widget::operation::{focus_next, focus_previous};
 use iced::widget::space::horizontal;
-use iced::widget::{button, column, container, row, text, Container, Text};
+use iced::widget::{button, column, container, row, text};
 use iced::{keyboard, time, Element, Renderer, Subscription, Task, Theme};
 use iced_aw::{TabBar, TabLabel};
 use poll::PollMessage;
@@ -481,20 +481,18 @@ impl App {
         };
 
         // Load favorite configs
-        if let Some(name) = &settings.fav_poll {
-            if let Some(form) = load_config::<PollState>(path, "polls", name) {
+        if let Some(name) = &settings.fav_poll
+            && let Some(form) = load_config::<PollState>(path, "polls", name) {
                 poll.form = form;
                 poll.configs.selected = Some(name.clone());
                 poll.configs.loaded = true;
             }
-        }
-        if let Some(name) = &settings.fav_prediction {
-            if let Some(form) = load_config::<PredictionState>(path, "predictions", name) {
+        if let Some(name) = &settings.fav_prediction
+            && let Some(form) = load_config::<PredictionState>(path, "predictions", name) {
                 prediction.form = form;
                 prediction.configs.selected = Some(name.clone());
                 prediction.configs.loaded = true;
             }
-        }
 
         // shared client with basic timeout values
         let client = reqwest::Client::builder()
@@ -510,9 +508,9 @@ impl App {
         let config_path = path.to_path_buf();
         let active_tab = match settings.default_tab.as_deref() {
             None => TabId::Prediction,
-            Some(tab) => match &tab {
-                &"Poll" => TabId::Poll,
-                &"Prediction" => TabId::Prediction,
+            Some(tab) => match tab {
+                "Poll" => TabId::Poll,
+                "Prediction" => TabId::Prediction,
                 _ => TabId::Prediction,
             },
         };
