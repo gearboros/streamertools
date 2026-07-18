@@ -17,7 +17,7 @@ mod widgets;
 use crate::config::{load_config, load_settings, save_settings, ConfigList, Settings};
 use crate::poll::{PollRun, PollState, PollTab};
 use crate::prediction::{PredictionRun, PredictionState, PredictionTab};
-use crate::settings::{resolve_theme, SettingsMessage};
+use crate::settings::{resolve_theme, Separator, SettingsMessage};
 use crate::style::{no_background_button, twitch_button, twitch_tab};
 use crate::twitch_auth::*;
 use auth::{AuthMessage, DeviceCodeInfo};
@@ -458,6 +458,7 @@ impl App {
         let polls = Self::load_files(path.join("polls")).unwrap_or_default();
         let preds = Self::load_files(path.join("predictions")).unwrap_or_default();
         let settings = load_settings(path).unwrap_or_default();
+        Separator::set_active(settings.separator.unwrap_or_default());
 
         let mut poll = PollTab {
             configs: ConfigList::with_list(polls),
@@ -482,17 +483,19 @@ impl App {
 
         // Load favorite configs
         if let Some(name) = &settings.fav_poll
-            && let Some(form) = load_config::<PollState>(path, "polls", name) {
-                poll.form = form;
-                poll.configs.selected = Some(name.clone());
-                poll.configs.loaded = true;
-            }
+            && let Some(form) = load_config::<PollState>(path, "polls", name)
+        {
+            poll.form = form;
+            poll.configs.selected = Some(name.clone());
+            poll.configs.loaded = true;
+        }
         if let Some(name) = &settings.fav_prediction
-            && let Some(form) = load_config::<PredictionState>(path, "predictions", name) {
-                prediction.form = form;
-                prediction.configs.selected = Some(name.clone());
-                prediction.configs.loaded = true;
-            }
+            && let Some(form) = load_config::<PredictionState>(path, "predictions", name)
+        {
+            prediction.form = form;
+            prediction.configs.selected = Some(name.clone());
+            prediction.configs.loaded = true;
+        }
 
         // shared client with basic timeout values
         let client = reqwest::Client::builder()

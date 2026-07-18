@@ -214,12 +214,9 @@ impl App {
         let selected = self.poll.configs.selected.clone();
         let is_favorite = selected.is_some() && selected == self.settings.fav_poll;
 
-        let save_row = config_bar(
-            &self.poll.configs,
-            &state.name,
-            is_favorite,
-            |cfg| Message::Poll(PollMessage::Config(cfg)),
-        );
+        let save_row = config_bar(&self.poll.configs, &state.name, is_favorite, |cfg| {
+            Message::Poll(PollMessage::Config(cfg))
+        });
 
         let title_input = text_input("Poll title", &state.title).on_input(|r| {
             Message::Poll(PollMessage::BaseFormChange(BaseFormMessage::TitleChanged(
@@ -576,16 +573,20 @@ fn get_votes_result(
             .spacing(SPACING)
             .align_y(Center),
         );
-        votes_col = votes_col.push(text(format!("{} votes, {:.2}%", o.votes, vote_percent)));
+        votes_col = votes_col.push(text(format!(
+            "{} votes, {}",
+            o.votes,
+            style::percent(vote_percent)
+        )));
         user_col = user_col.push(text(format!(
-            "{} votes, {:.2}%",
+            "{} votes, {}",
             o.popular_votes(),
-            pop_vote_percent
+            style::percent(pop_vote_percent)
         )));
         point_col = point_col.push(text(format!(
-            "{} votes, {:.2}% ({} points)",
+            "{} votes, {} ({} points)",
             o.channel_points_votes,
-            point_vote_percent,
+            style::percent(point_vote_percent),
             thousand_separator(o.channel_points_votes * cost as i64)
         )));
     }

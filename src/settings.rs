@@ -4,14 +4,52 @@ use crate::{App, Message, SPACING};
 use iced::alignment::Vertical;
 use iced::widget::{column, pick_list, row, Container, PickList, Text};
 use iced::{Element, Length, Renderer, Task, Theme};
+use serde::{Deserialize, Serialize};
+use std::fmt::{Display, Formatter};
 use std::path::Path;
 use std::string::ToString;
+use std::sync::RwLock;
+
+static ACTIVE: RwLock<Separator> = RwLock::new(Separator::DotDecimalCommaThousand);
 
 #[derive(Debug, Clone)]
 pub enum SettingsMessage {
     DefaultTab(String),
     LightTheme(String),
     DarkTheme(String),
+    NumberFormat(Separator),
+}
+
+#[derive(Debug, Clone, Copy, Default, Eq, PartialEq, Deserialize, Serialize)]
+pub enum Separator {
+    #[default]
+    DotDecimalCommaThousand,
+    CommaDecimalDotThousand,
+}
+
+impl Separator {
+    const ALL: &'static [Separator] = &[
+        Separator::DotDecimalCommaThousand,
+        Separator::CommaDecimalDotThousand,
+    ];
+
+    pub fn active() -> Separator {
+        *ACTIVE.read().unwrap_or_else(|e| e.into_inner())
+    }
+
+    pub fn set_active(active: Separator) {
+        *ACTIVE.write().unwrap_or_else(|e| e.into_inner()) = active;
+    }
+}
+
+impl Display for Separator {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let str = match self {
+            Separator::DotDecimalCommaThousand => "1,234.56",
+            Separator::CommaDecimalDotThousand => "1.234,56",
+        };
+        write!(f, "{str}")
+    }
 }
 
 const LIGHT_THEMES: &[Theme] = &[
@@ -77,7 +115,18 @@ impl App {
             .spacing(SPACING)
             .align_y(Vertical::Center);
 
-        Container::new(column![tab_row, light_row, dark_row].spacing(SPACING))
+        let i18n_text = Text::new("Number format: ").width(Length::FillPortion(1));
+        let i18n_pick: PickList<'_, Separator, &[Separator], Separator, Message> = pick_list(
+            Separator::ALL,
+            Some(self.settings.separator.unwrap_or_default()),
+            |t| Message::Settings(NumberFormat(t)),
+        )
+        .width(Length::FillPortion(2));
+        let i18n_row = row![i18n_text, i18n_pick]
+            .spacing(SPACING)
+            .align_y(Vertical::Center);
+
+        Container::new(column![tab_row, light_row, dark_row, i18n_row].spacing(SPACING))
             .max_width(500)
             .height(Length::Fill)
             .into()
@@ -95,6 +144,11 @@ impl App {
             }
             DarkTheme(theme) => {
                 self.settings.dark_theme = Some(theme);
+                try_save_settings(&self.config_path, &self.settings)
+            }
+            NumberFormat(separator) => {
+                self.settings.separator = Some(separator);
+                Separator::set_active(separator);
                 try_save_settings(&self.config_path, &self.settings)
             }
         }

@@ -306,12 +306,9 @@ impl App {
         let selected = self.prediction.configs.selected.clone();
         let is_favorite = selected.is_some() && selected == self.settings.fav_prediction;
 
-        let config_row = config_bar(
-            &self.prediction.configs,
-            &state.name,
-            is_favorite,
-            |cfg| Message::Prediction(PredictionMessage::Config(cfg)),
-        );
+        let config_row = config_bar(&self.prediction.configs, &state.name, is_favorite, |cfg| {
+            Message::Prediction(PredictionMessage::Config(cfg))
+        });
 
         let title_input = text_input("Prediction title", &state.title).on_input(|r| {
             Message::Prediction(PredictionMessage::BaseFormChange(
@@ -520,7 +517,7 @@ fn get_state_view(
                     row![
                         Text::new("Prediction resolved, Winner: "),
                         bold_text(winner.title.clone()),
-                        Text::new(format!(" ({ratio:.2}x)")),
+                        Text::new(format!(" ({}x)", style::decimal(ratio))),
                     ],
                     get_points_distribution(&Some(current), active_tab, form_options)
                 ]
@@ -647,11 +644,15 @@ fn get_points_distribution(
         let (user_percent, point_percent) = get_percentages(total_points, total_users, &o);
         title_col = title_col.push(text(format!("• {}", o.title.clone())));
         point_col = point_col.push(text(format!(
-            "{} points, {:.2}%",
+            "{} points, {}",
             thousand_separator(o.channel_points),
-            point_percent
+            style::percent(point_percent)
         )));
-        user_col = user_col.push(text(format!("{} users, {:.2}%", o.users, user_percent)));
+        user_col = user_col.push(text(format!(
+            "{} users, {}",
+            o.users,
+            style::percent(user_percent)
+        )));
 
         let is_active = active_tab == idx;
         let btn = button(text(o.title.clone()))

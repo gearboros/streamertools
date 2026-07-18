@@ -1,3 +1,4 @@
+use crate::settings::Separator;
 use crate::{App, Message};
 use iced::Task;
 use serde::de::DeserializeOwned;
@@ -167,6 +168,7 @@ pub struct Settings {
     pub default_tab: Option<String>,
     pub light_theme: Option<String>,
     pub dark_theme: Option<String>,
+    pub separator: Option<Separator>,
 }
 
 const SETTINGS_NAME: &str = "settings.json";

@@ -1,3 +1,4 @@
+use crate::settings::Separator;
 use iced::widget::button::Style;
 use iced::widget::{button, Text};
 use iced::{Background, Color, Theme};
@@ -115,8 +116,12 @@ pub fn bold_text<'a>(text: String) -> Text<'a> {
     })
 }
 
-/// Groups digits with `.` (European style: `1.000.000`), not the comma English readers expect.
+/// Groups digits with the thousands mark the user picked in the settings.
 pub fn thousand_separator(number: i64) -> String {
+    thousand_separator_with(number, Separator::active())
+}
+
+fn thousand_separator_with(number: i64, sep: Separator) -> String {
     let s = number.to_string();
     let (sign, digits) = match s.strip_prefix('-') {
         Some(rest) => ("-", rest),
@@ -127,11 +132,36 @@ pub fn thousand_separator(number: i64) -> String {
     out.push_str(sign);
     for (i, c) in digits.chars().enumerate() {
         if i > 0 && (len - i) % 3 == 0 {
-            out.push('.');
+            out.push(if sep == Separator::CommaDecimalDotThousand {
+                '.'
+            } else {
+                ','
+            });
         }
         out.push(c);
     }
     out
+}
+
+/// Formats with two decimals using the decimal mark the user picked in the settings.
+pub fn decimal(number: f64) -> String {
+    decimal_with(number, Separator::active())
+}
+
+fn decimal_with(number: f64, sep: Separator) -> String {
+    let formatted = format!("{number:.2}");
+    match sep {
+        Separator::DotDecimalCommaThousand => formatted,
+        Separator::CommaDecimalDotThousand => formatted.replace('.', ","),
+    }
+}
+
+pub fn percent(number: f64) -> String {
+    percent_with(number, Separator::active())
+}
+
+fn percent_with(number: f64, sep: Separator) -> String {
+    format!("{}%", decimal_with(number, sep))
 }
 
 pub fn get_base_color(color: &str) -> Color {
@@ -139,49 +169,6 @@ pub fn get_base_color(color: &str) -> Color {
         "BLUE" => Color::from_rgb8(0x38, 0x7A, 0xFF),
         "PINK" => Color::from_rgb8(0xf5, 0x00, 0x9b),
         &_ => Color::WHITE,
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::thousand_separator;
-
-    #[test]
-    fn zero() {
-        assert_eq!(thousand_separator(0), "0");
-    }
-
-    #[test]
-    fn no_separator_below_one_thousand() {
-        assert_eq!(thousand_separator(1), "1");
-        assert_eq!(thousand_separator(999), "999");
-    }
-
-    #[test]
-    fn single_separator() {
-        assert_eq!(thousand_separator(1000), "1.000");
-        assert_eq!(thousand_separator(999999), "999.999");
-    }
-
-    #[test]
-    fn multiple_separators() {
-        assert_eq!(thousand_separator(1000000), "1.000.000");
-        assert_eq!(thousand_separator(1234567), "1.234.567");
-    }
-
-    #[test]
-    fn negative_numbers() {
-        assert_eq!(thousand_separator(-1), "-1");
-        assert_eq!(thousand_separator(-1000), "-1.000");
-        assert_eq!(thousand_separator(-1234567), "-1.234.567");
-    }
-
-    #[test]
-    fn extremes() {
-        assert_eq!(thousand_separator(i32::MAX as i64), "2.147.483.647");
-        assert_eq!(thousand_separator(i32::MIN as i64), "-2.147.483.648");
-        assert_eq!(thousand_separator(i64::MAX), "9.223.372.036.854.775.807");
-        assert_eq!(thousand_separator(i64::MIN), "-9.223.372.036.854.775.808");
     }
 }
 
@@ -231,5 +218,92 @@ pub fn color_button(base_color: Color, status: button::Status, is_active: bool) 
             radius: 0.0.into(),
         },
         ..Style::default()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{decimal_with, percent_with, thousand_separator_with};
+    use crate::settings::Separator::{CommaDecimalDotThousand, DotDecimalCommaThousand};
+
+    /// The helpers under test take the separator explicitly so they never touch the
+    /// process-global setting, which tests running in parallel would otherwise race on.
+    fn cddt(number: i64) -> String {
+        thousand_separator_with(number, CommaDecimalDotThousand)
+    }
+
+    #[test]
+    fn zero() {
+        assert_eq!(cddt(0), "0");
+    }
+
+    #[test]
+    fn no_separator_below_one_thousand() {
+        assert_eq!(cddt(1), "1");
+        assert_eq!(cddt(999), "999");
+    }
+
+    #[test]
+    fn single_separator() {
+        assert_eq!(cddt(1000), "1.000");
+        assert_eq!(cddt(999999), "999.999");
+    }
+
+    #[test]
+    fn multiple_separators() {
+        assert_eq!(cddt(1000000), "1.000.000");
+        assert_eq!(cddt(1234567), "1.234.567");
+    }
+
+    #[test]
+    fn negative_numbers() {
+        assert_eq!(cddt(-1), "-1");
+        assert_eq!(cddt(-1000), "-1.000");
+        assert_eq!(cddt(-1234567), "-1.234.567");
+    }
+
+    #[test]
+    fn extremes() {
+        assert_eq!(cddt(i32::MAX as i64), "2.147.483.647");
+        assert_eq!(cddt(i32::MIN as i64), "-2.147.483.648");
+        assert_eq!(cddt(i64::MAX), "9.223.372.036.854.775.807");
+        assert_eq!(cddt(i64::MIN), "-9.223.372.036.854.775.808");
+    }
+
+    #[test]
+    fn thousands_follow_the_selected_format() {
+        assert_eq!(
+            thousand_separator_with(1234567, DotDecimalCommaThousand),
+            "1,234,567"
+        );
+        assert_eq!(
+            thousand_separator_with(-1234567, DotDecimalCommaThousand),
+            "-1,234,567"
+        );
+    }
+
+    #[test]
+    fn decimal_always_has_two_places() {
+        assert_eq!(decimal_with(1234.5, DotDecimalCommaThousand), "1234.50");
+        assert_eq!(decimal_with(1234.5, CommaDecimalDotThousand), "1234,50");
+        assert_eq!(decimal_with(0.0, DotDecimalCommaThousand), "0.00");
+    }
+
+    #[test]
+    fn decimal_rounds_and_keeps_the_sign() {
+        assert_eq!(decimal_with(0.567, DotDecimalCommaThousand), "0.57");
+        assert_eq!(decimal_with(-12.345, CommaDecimalDotThousand), "-12,35");
+    }
+
+    #[test]
+    fn percent_appends_exactly_one_sign() {
+        assert_eq!(percent_with(41.666, DotDecimalCommaThousand), "41.67%");
+        assert_eq!(percent_with(41.666, CommaDecimalDotThousand), "41,67%");
+        assert_eq!(
+            percent_with(50.0, DotDecimalCommaThousand)
+                .matches('%')
+                .count(),
+            1
+        );
     }
 }
